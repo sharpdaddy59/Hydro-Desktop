@@ -1,0 +1,63 @@
+name: Build firmware
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:   # lets you smoke-test the build without cutting a tag
+
+permissions:
+  contents: write      # required for softprops/action-gh-release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Cache board package + libraries
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.arduino15
+            ~/Arduino/libraries
+          key: arduino-${{ runner.os }}-${{ hashFiles('.github/workflows/release.yml') }}
+
+      - name: Configure arduino-cli + install ESP32 core
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+
+      - name: Install libraries
+        run: |
+          arduino-cli lib install \
+            "LovyanGFX" "WiFiManager" "ArduinoJson"
+
+      - name: Compile
+        run: |
+          arduino-cli compile \
+            --fqbn esp32:esp32:esp32 \
+            --warnings default \
+            --export-binaries \
+            .
+
+      - name: Stage release assets
+        run: |
+          set -euo pipefail
+          BIN_DIR="build/esp32.esp32.esp32"
+          TAG="${GITHUB_REF_NAME}"
+          mkdir -p dist
+          cp "$BIN_DIR/hydro-dash.ino.bin" "dist/hydro-dash-${TAG}.bin"
+          cp "$BIN_DIR/hydro-dash.ino.elf" "dist/hydro-dash-${TAG}.elf"
+          ls -lh dist
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/hydro-dash-*.bin
+            dist/hydro-dash-*.elf
+          generate_release_notes: true
