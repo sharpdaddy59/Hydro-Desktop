@@ -2,7 +2,8 @@
 //
 // No camera on this board, so the QR-code path used by cores3-hydro
 // doesn't apply. Standard captive portal: if no credentials are saved,
-// the device opens AP_SSID; the user joins it from a phone, the portal
+// the device opens an AP named "<device_hostname>-setup"; the user joins
+// it from a phone, the portal
 // auto-launches, they enter their LAN credentials, the device saves
 // them and reboots into client mode.
 //

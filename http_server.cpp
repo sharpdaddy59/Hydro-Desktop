@@ -4,6 +4,7 @@
 #include "prefs.h"
 #include "wifi_setup.h"
 #include "discovery.h"
+#include "device_id.h"
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include <cmath>
@@ -17,14 +18,40 @@ static void send_json(int code, const JsonDocument& doc) {
 }
 
 static void handle_root() {
-  String body = "<!doctype html><meta charset=utf-8><title>hydro-dash</title>"
-                "<h1>hydro-dash " FW_VERSION "</h1>"
-                "<p>Devices: ";
+  const char* host = device_hostname();
+  String body;
+  body.reserve(1500);
+  body  = F("<!doctype html><meta charset=utf-8><title>");
+  body += host;
+  body += F("</title>"
+            "<style>"
+            "body{font-family:sans-serif;max-width:480px;margin:1.5em auto;padding:0 1em;}"
+            "h1{margin-bottom:.1em}h2{margin-top:1.5em}"
+            "form{display:inline}"
+            "button,input{font-size:1em;padding:.4em .8em;margin:.3em 0}"
+            "</style>"
+            "<h1>");
+  body += host;
+  body += F("</h1><p>Firmware " FW_VERSION ". Devices known: ");
   body += g_device_count.load();
-  body += "</p><ul>"
-          "<li><a href=/devices>/devices</a></li>"
-          "<li><a href=/status>/status</a></li>"
-          "</ul>";
+  body += F(".</p>"
+            "<h2>Inspect</h2>"
+            "<ul>"
+            "<li><a href=/devices>/devices</a> &mdash; JSON device list</li>"
+            "<li><a href=/status>/status</a> &mdash; firmware, uptime, heap</li>"
+            "</ul>"
+            "<h2>Actions</h2>"
+            "<form method=POST action=/rebrowse>"
+              "<button type=submit>Re-scan mDNS</button>"
+            "</form> "
+            "<form method=POST action=/wifi/reset onsubmit=\"return confirm('Wipe WiFi credentials and reboot?');\">"
+              "<button type=submit>Reset WiFi</button>"
+            "</form>"
+            "<h2>Add a manual host</h2>"
+            "<form method=POST action=/devices>"
+              "<input name=hostname placeholder=hydro-greenhouse-1>"
+              "<button type=submit>Add</button>"
+            "</form>");
   s_server.send(200, "text/html", body);
 }
 
@@ -50,12 +77,32 @@ static void handle_devices_get() {
   send_json(200, doc);
 }
 
+// Small "you POSTed something, here's a Back link + auto-redirect"
+// landing page used by the action endpoints.
+static void send_back_html(const char* msg) {
+  String body;
+  body.reserve(400);
+  body  = F("<!doctype html><meta charset=utf-8>"
+            "<meta http-equiv=refresh content=\"2;url=/\">"
+            "<title>");
+  body += msg;
+  body += F("</title>"
+            "<body style=\"font-family:sans-serif;text-align:center;margin-top:3em\">"
+            "<p>");
+  body += msg;
+  body += F("</p><p><a href=/>&larr; Back to home</a></p>");
+  s_server.send(200, "text/html", body);
+}
+
 static void handle_devices_post() {
-  if (!s_server.hasArg("hostname")) { s_server.send(400, "text/plain", "need hostname"); return; }
+  if (!s_server.hasArg("hostname")) {
+    s_server.send(400, "text/plain", "need hostname");
+    return;
+  }
   String h = s_server.arg("hostname");
   prefs_add_manual_host(h.c_str());
   state_insert(h.c_str());
-  s_server.send(200, "text/plain", "ok");
+  send_back_html("Manual host added");
 }
 
 static void handle_status() {
@@ -73,13 +120,23 @@ void http_server_begin() {
   s_server.on("/devices",  HTTP_POST,   handle_devices_post);
   s_server.on("/status",   HTTP_GET,    handle_status);
   s_server.on("/wifi/reset", HTTP_POST, []() {
-    s_server.send(200, "text/plain", "resetting WiFi");
+    String body;
+    body.reserve(400);
+    body  = F("<!doctype html><meta charset=utf-8>"
+              "<title>Resetting WiFi</title>"
+              "<body style=\"font-family:sans-serif;text-align:center;margin-top:3em\">"
+              "<p>Wiping WiFi credentials and rebooting. The device will "
+              "come back online in setup-AP mode named "
+              "<code>");
+    body += device_hostname();
+    body += F("-setup</code>.</p>");
+    s_server.send(200, "text/html", body);
     delay(500);
     wifi_setup_reset_and_reboot();
   });
   s_server.on("/rebrowse", HTTP_POST, []() {
     discovery_force_rebrowse();
-    s_server.send(200, "text/plain", "ok");
+    send_back_html("mDNS re-scan triggered");
   });
   s_server.begin();
 }

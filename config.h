@@ -8,7 +8,7 @@
 
 #pragma once
 
-#define FW_VERSION       "0.1.1"
+#define FW_VERSION       "0.1.2"
 
 // ---------------------------------------------------------------------------
 // Display (ILI9341, HSPI bus, 240x320 portrait native -> rotated to 320x240)
@@ -57,8 +57,9 @@
 
 #define MDNS_FILTER_PREFIX       "cores3-hydro-"
 
-// AP mode (WiFiManager fallback when no creds saved)
-#define AP_SSID                  "hydro-dash-setup"
+// AP mode (WiFiManager fallback when no creds saved). The SSID is
+// built at runtime as "<device_hostname>-setup" so multiple units being
+// onboarded simultaneously don't show identical networks.
 #define AP_PASSWORD              ""    // open AP; user only sees it during setup
 #define AP_TIMEOUT_S             180
 

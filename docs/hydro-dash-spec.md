@@ -9,6 +9,12 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.2:** Per-MAC unique hostname (`hydro-dash-<last4mac>`) used for
+  mDNS, the WiFiManager AP SSID, and shown in the hero footer so
+  multiple CYDs are distinguishable on the same LAN. New `device_id.cpp`
+  / `.h` owns the computation. Hero view's "Humid" label expanded to
+  "Humidity". README rewritten to describe the actual hero view (no
+  longer the 2×2 grid that was in the original scaffold).
 - **v0.1.1:** Replaced 2×2 grid with single-device "hero" view +
   auto-cycle + status-dot strip (4 tiles at 160×120 with size-1 font
   was unreadable from desk distance). Dropped the `cores3-hydro-`

@@ -131,7 +131,14 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Recent state
 
-- **v0.1.1 (current):** working dashboard end-to-end. Hero-view layout
+- **v0.1.2 (current):** per-MAC unique hostname so multiple CYDs are
+  distinguishable on the same LAN. `device_id.cpp` / `.h` computes
+  `hydro-dash-<last4mac>` once at boot; used for `MDNS.begin`, the
+  WiFiManager AP SSID (now `<hostname>-setup`), and shown in the hero
+  footer. Hero "Humid" label expanded to "Humidity". README rewritten
+  to describe the actual hero view (the original scaffold's 2×2 grid
+  description was stale).
+- **v0.1.1:** working dashboard end-to-end. Hero-view layout
   (one device at a time with auto-cycle and a status-dot strip on top)
   replaced the original 2×2 grid because text-size-1 in 160×120 tiles
   was unreadable from desk distance. Discovery dropped the

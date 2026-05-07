@@ -2,6 +2,7 @@
 #include "config.h"
 #include "state.h"
 #include "prefs.h"
+#include "device_id.h"
 #include <ESPmDNS.h>
 #include <HTTPClient.h>
 #include <freertos/FreeRTOS.h>
@@ -63,7 +64,8 @@ static void task_discovery(void* /*arg*/) {
 }
 
 void discovery_begin() {
-  if (!MDNS.begin("hydro-dash")) {
+  // Per-MAC hostname so multiple dashboards on the same LAN don't collide.
+  if (!MDNS.begin(device_hostname())) {
     // Non-fatal — we just won't be able to browse.
   }
   seed_manual_hosts();

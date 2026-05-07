@@ -4,6 +4,7 @@
 #include "state.h"
 #include "config.h"
 #include "prefs.h"
+#include "device_id.h"
 #include <cmath>
 
 // Layout. Name and readings both render at text size 3 (~24 px tall);
@@ -119,19 +120,28 @@ static void draw_hero() {
     g.setCursor(W - RIGHT_PAD - tw, FY(y, LINE_H));
     g.print(buf);
   };
-  reading(0, "Water", d.water_temp.load(), "C");
-  reading(1, "Air",   d.air_temp.load(),   "C");
-  reading(2, "Humid", d.humidity.load(),   "%");
-  reading(3, "Light", d.light.load(),      "");
+  reading(0, "Water",    d.water_temp.load(), "C");
+  reading(1, "Air",      d.air_temp.load(),   "C");
+  reading(2, "Humidity", d.humidity.load(),   "%");
+  reading(3, "Light",    d.light.load(),      "");
 
-  // Footer: device count, RSSI, sim flags. Logical y=H-12 puts it 12 px
-  // from the user's bottom edge.
-  g.setTextSize(1);
+  // Footer: status details up top, hostname on its own line at the
+  // bottom (size 2 so it's legible from desk distance) — multiple CYDs
+  // are distinguishable at a glance from across the room.
+  const int FOOTER_LINE_H = 16;
+  int hostname_y = H - FOOTER_LINE_H - 4;
+  int status_y   = hostname_y - FOOTER_LINE_H - 2;
+
+  g.setTextSize(2);
   g.setTextColor(TFT_DARKGREY, TFT_BLACK);
-  g.setCursor(8, FY(H - 12, 8));
-  g.printf("%u/%u  RSSI %d  fails:%u",
-           (unsigned)(s_focused + 1), (unsigned)n,
-           d.rssi.load(), (unsigned)d.consecutive_fails.load());
+  g.setCursor(8, FY(status_y, FOOTER_LINE_H));
+  g.printf("%u/%u   RSSI %d", (unsigned)(s_focused + 1), (unsigned)n,
+           d.rssi.load());
+
+  g.setTextSize(2);
+  g.setTextColor(TFT_WHITE, TFT_BLACK);
+  g.setCursor(8, FY(hostname_y, FOOTER_LINE_H));
+  g.print(device_hostname());
 }
 
 void ui_hero_tick() {

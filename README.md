@@ -2,8 +2,8 @@
 
 Desktop dashboard firmware for the Sunton ESP32-2432S028R (CYD). Polls
 multiple [cores3-hydro](https://github.com/sharpdaddy59/cores3-hydro)
-devices on the LAN over their JSON HTTP API and renders a glanceable
-2×2 tile grid of current readings.
+devices on the LAN over their JSON HTTP API and renders a single
+device at a time on a glanceable hero view, auto-cycling through them.
 
 The dashboard is **stateless and never alerts** — same stance as the
 hydro firmware itself. Interpretation is the upstream agent's job; this
@@ -11,16 +11,29 @@ just shows what's true right now.
 
 ## Features
 
-- 2×2 tile grid: one device per tile, water/air/humidity/light at a glance
-- Tap a tile for a detail view (uptime, RSSI, FW version, battery, IP)
-- Long-press the grid for settings (brightness, rotation, WiFi reset, re-scan)
-- **mDNS discovery** for `cores3-hydro-*.local` services on the LAN
+- **Hero view** — one device at a time, big text-size-3 readings
+  (water / air / humidity / light), readable from desk distance.
+  Auto-cycles every 6 s when more than one device is present.
+- **Status-dot strip** at the top, one colored dot per known device:
+  green = fresh, yellow = sim mode, gray = stale or no data. Tap a dot
+  to focus that device + pause cycling. Tap the hero pane to toggle
+  pause.
+- **Long-press** opens Settings (rotation cycle for now, more later).
+- **Per-MAC unique hostname** like `hydro-dash-a3f2.local` — multiple
+  CYDs on the same LAN don't collide. The hostname is shown in the
+  hero footer so you can identify which physical unit you're looking at.
+- **Auto-discovery** — mDNS-browses every `_http._tcp` service on the
+  LAN and probes `/sensors` for the cores3-hydro shape. Works with any
+  hostname your hydros are using (the dashboard doesn't assume the
+  default `cores3-hydro-*` prefix).
 - **Manual host fallback** for routers with flaky mDNS — host list is
-  persisted in NVS and merged with discovery results
-- **WiFiManager AP onboarding** — no QR code, no app; join the
-  `hydro-dash-setup` network from a phone, captive portal does the rest
-- **LDR-driven backlight auto-dim** — won't burn in on a desk
-- Small management API on port 80 (`/devices`, `/status`, `/wifi/reset`)
+  persisted in NVS and merged with discovery results.
+- **WiFiManager AP onboarding** — first boot opens a per-device AP
+  named `<hostname>-setup`; join from a phone, captive portal does the
+  rest.
+- **LDR-driven backlight auto-dim** — won't burn in on a desk.
+- Small management API on port 80 (`/devices`, `/status`, `/wifi/reset`,
+  `/rebrowse`).
 
 ## Hardware
 
@@ -31,15 +44,19 @@ just shows what's true right now.
   cores3-hydro devices over the LAN.
 
 > **Other CYD revisions:** the `S028C` (capacitive) and various clone
-> variants have different pin maps. Update [`config.h`](config.h) to
-> match yours; pin numbers are in one place.
+> variants have different pin maps and may need different LovyanGFX
+> panel-config values. Update [`config.h`](config.h) and the panel
+> config in [`ui.cpp`](ui.cpp) to match yours. The current values
+> (`panel_width=320, panel_height=240, offset_y=80, rotation 4`) were
+> dialed in empirically against the user's S028R units; see
+> [`docs/hydro-dash-spec.md`](docs/hydro-dash-spec.md) for the story.
 
 ## Quick start
 
 PowerShell on Windows:
 
 ```powershell
-git clone https://github.com/<your-user>/hydro-dash.git
+git clone https://github.com/sharpdaddy59/Hydro-Desktop.git hydro-dash
 cd hydro-dash
 
 # One-time setup: installs arduino-cli, esp32:esp32 core, and libraries.
@@ -49,9 +66,10 @@ cd hydro-dash
 .\build.ps1 -Upload -Monitor
 ```
 
-On first boot the device opens a `hydro-dash-setup` WiFi network. Join
-it from a phone, the captive portal opens, enter your LAN credentials,
-the device reboots into client mode and starts browsing for hydros.
+On first boot the device opens a `hydro-dash-<last4mac>-setup` WiFi
+network. Join it from a phone, the captive portal opens, enter your LAN
+credentials, the device reboots into client mode and starts browsing for
+hydros.
 
 ## HTTP API
 
@@ -72,15 +90,16 @@ hydro-dash/
 ├── hydro-dash.ino          Sketch entry, FreeRTOS task spawn
 ├── config.h                Pins, intervals, FW_VERSION, max devices
 ├── state.{cpp,h}           DeviceRecord struct, atomic globals, mutex
+├── device_id.{cpp,h}       Per-MAC unique hostname helper
 ├── prefs.{cpp,h}           NVS: brightness, rotation, manual hosts, aliases
 ├── backlight.{cpp,h}       LDR-driven PWM auto-dim
 ├── ui.{cpp,h}              LovyanGFX panel config + screen state machine
-├── ui_grid.{cpp,h}         2×2 tile dashboard
+├── ui_hero.{cpp,h}         Hero view + status-dot strip
 ├── ui_detail.{cpp,h}       Per-device drilldown
-├── ui_settings.{cpp,h}     Settings screen (stub)
+├── ui_settings.{cpp,h}     Settings screen (rotation cycle)
 ├── touch.{cpp,h}           XPT2046 tap/long-press dispatch
 ├── wifi_setup.{cpp,h}      WiFiManager AP-mode onboarding
-├── discovery.{cpp,h}       mDNS browse for cores3-hydro-*
+├── discovery.{cpp,h}       mDNS browse + /sensors probe
 ├── poller.{cpp,h}          HTTP polling task
 ├── http_server.{cpp,h}     Management API
 ├── build.ps1, setup.ps1    arduino-cli wrappers
@@ -90,9 +109,11 @@ hydro-dash/
 
 ## Status
 
-v0.1.0 — initial scaffold. Compiles, boots, brings up the panel.
-First-boot touch calibration and the settings screen are still stubs;
-see the open-work list at the bottom of [`docs/hydro-dash-spec.md`](docs/hydro-dash-spec.md).
+v0.1.2 — working end-to-end. Hero view + auto-cycle, mDNS discovery,
+unique per-device hostnames, panel config dialed in for the S028R.
+Touch calibration is still placeholder (first-press is slightly
+off-axis until the settings flow lands); see the open-work list at the
+bottom of [`docs/hydro-dash-spec.md`](docs/hydro-dash-spec.md).
 
 ## License
 
