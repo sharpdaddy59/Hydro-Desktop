@@ -169,6 +169,7 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 - `docs/hydro-dash-spec.md` — full design doc + screen flow + open work
 - `config.h` — central tunables (intervals, pins, version)
 - `state.h` / `state.cpp` — DeviceRecord, atomics, mutex
+- `enclosure/` — parametric OpenSCAD case (snap-fit, no fasteners)
 - `ui.cpp` — LovyanGFX panel config (pin numbers come from `config.h`)
 - `poller.cpp` — HTTP polling task; the `/sensors` contract lives here
 - `discovery.cpp` — mDNS browse + manual-host seeding

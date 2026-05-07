@@ -40,6 +40,13 @@ from the spec, update the spec.
 
 ## Hardware
 
+For the enclosure (3D-printed, parametric OpenSCAD source), see
+[`enclosure/`](../enclosure/). It's a snap-fit two-piece case with
+PCB-retention posts, both USB cutouts, an integrated stylus channel,
+removable kickstand, and a wall-mount keyhole.
+
+
+
 | Subsystem | Pin / detail |
 |-----------|--------------|
 | ILI9341 TFT (HSPI) | MOSI 13, MISO 12, SCLK 14, CS 15, DC 2, RST -1, BL 21 |
