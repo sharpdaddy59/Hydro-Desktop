@@ -12,7 +12,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      # arduino-cli requires the sketch directory's leaf name to match the
+      # .ino's basename. The repo is named Hydro-Desktop on GitHub but the
+      # sketch is hydro-dash.ino, so we check out into a hydro-dash/ subdir
+      # to keep the leaf-name rule satisfied without renaming local files.
       - uses: actions/checkout@v4
+        with:
+          path: hydro-dash
 
       - uses: arduino/setup-arduino-cli@v2
 
@@ -22,7 +28,7 @@ jobs:
           path: |
             ~/.arduino15
             ~/Arduino/libraries
-          key: arduino-${{ runner.os }}-${{ hashFiles('.github/workflows/release.yml') }}
+          key: arduino-${{ runner.os }}-${{ hashFiles('hydro-dash/.github/workflows/release.yml') }}
 
       - name: Configure arduino-cli + install ESP32 core
         run: |
@@ -36,6 +42,7 @@ jobs:
             "LovyanGFX" "WiFiManager" "ArduinoJson"
 
       - name: Compile
+        working-directory: hydro-dash
         run: |
           arduino-cli compile \
             --fqbn esp32:esp32:esp32 \
@@ -44,6 +51,7 @@ jobs:
             .
 
       - name: Stage release assets
+        working-directory: hydro-dash
         run: |
           set -euo pipefail
           BIN_DIR="build/esp32.esp32.esp32"
@@ -58,6 +66,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/hydro-dash-*.bin
-            dist/hydro-dash-*.elf
+            hydro-dash/dist/hydro-dash-*.bin
+            hydro-dash/dist/hydro-dash-*.elf
           generate_release_notes: true
