@@ -27,7 +27,10 @@ static int8_t   s_focused        = 0;
 static bool     s_paused         = false;
 static uint32_t s_last_cycle_ms  = 0;
 
-static uint32_t status_color(const DeviceRecord& d) {
+// uint16_t (not uint32_t) so LovyanGFX's color path treats values as
+// RGB565. With uint32_t the converter dispatches to its RGB888
+// overload and the bytes get reinterpreted (TFT_GREEN ends up red).
+static uint16_t status_color(const DeviceRecord& d) {
   if (!d.has_data.load() || d.stale.load())                      return 0x4208;       // dim gray
   if (d.sim_air.load() || d.sim_water.load() || d.sim_light.load()) return TFT_YELLOW;
   return TFT_GREEN;
@@ -101,14 +104,26 @@ static void draw_hero() {
   g.setTextWrap(true);
 
   // Readings — text size 3. Label left-aligned at x=8; value right-
-  // aligned to the panel's right edge.
+  // aligned to the panel's right edge. Each row's color reflects its
+  // own state (matches the strip dot's color semantics):
+  //   green  = fresh, real data
+  //   yellow = fresh, but this sensor is in sim mode upstream
+  //   gray   = device is stale (overrides per-sensor sim state)
   g.setTextSize(3);
   const int LINE_H = 24;
-  uint32_t fg = d.stale.load() ? 0x7BEF : TFT_WHITE;
-  g.setTextColor(fg, TFT_BLACK);
+  bool stale = d.stale.load();
 
-  auto reading = [&](int line, const char* label, float v, const char* unit) {
+  auto reading = [&](int line, const char* label, float v, const char* unit,
+                     bool simulated) {
     int y = HERO_LINE0_Y + line * HERO_LINE_DY;
+    // uint16_t (not uint32_t!) so LovyanGFX treats the value as
+    // RGB565. With uint32_t it dispatches to the RGB888 overload and
+    // the bytes get reinterpreted, which is why TFT_GREEN was coming
+    // out red.
+    uint16_t color = stale     ? 0x7BEF
+                   : simulated ? TFT_YELLOW
+                   :             TFT_GREEN;
+    g.setTextColor(color, (uint16_t)TFT_BLACK);
     g.setCursor(8, FY(y, LINE_H));
     g.print(label);
 
@@ -120,10 +135,11 @@ static void draw_hero() {
     g.setCursor(W - RIGHT_PAD - tw, FY(y, LINE_H));
     g.print(buf);
   };
-  reading(0, "Water",    d.water_temp.load(), "C");
-  reading(1, "Air",      d.air_temp.load(),   "C");
-  reading(2, "Humidity", d.humidity.load(),   "%");
-  reading(3, "Light",    d.light.load(),      "");
+  // Air and Humidity share sim_air — same DHT20 sensor on the hydro side.
+  reading(0, "Water",    d.water_temp.load(), "C", d.sim_water.load());
+  reading(1, "Air",      d.air_temp.load(),   "C", d.sim_air.load());
+  reading(2, "Humidity", d.humidity.load(),   "%", d.sim_air.load());
+  reading(3, "Light",    d.light.load(),      "",  d.sim_light.load());
 
   // Footer: status details up top, hostname on its own line at the
   // bottom (size 2 so it's legible from desk distance) — multiple CYDs

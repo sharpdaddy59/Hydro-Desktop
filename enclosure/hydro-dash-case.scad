@@ -82,7 +82,7 @@ SCREEN_OFFSET_Y      = LCD_OFFSET_Y + LCD_BEZEL_Y;
 // MEASURE all four; the defaults are guesses that need verification.
 USB_C_WIDTH          =  9.4;
 USB_C_HEIGHT         =  3.5;
-USB_C_Y_CENTER       = 23.5;
+USB_C_Y_CENTER       = 24.5;
 USB_C_Z_OFFSET       = -2.0;   // centre relative to PCB BOTTOM surface (negative = below PCB)
 MICRO_USB_WIDTH      =  8.0;
 MICRO_USB_HEIGHT     =  3.5;

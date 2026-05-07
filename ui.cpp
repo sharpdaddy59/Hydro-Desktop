@@ -58,7 +58,7 @@ public:
       c.dummy_read_bits  = 1;
       c.readable         = true;
       c.invert           = false;
-      c.rgb_order        = false;
+      c.rgb_order        = true;   // CYD wires the LCD as BGR; this enables MADCTL.BGR so RGB565 colors render correctly (yellow stays yellow, red stays red, etc.)
       c.dlen_16bit       = false;
       c.bus_shared       = false;
       _panel.config(c);

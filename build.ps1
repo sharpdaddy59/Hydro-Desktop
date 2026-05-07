@@ -72,7 +72,15 @@ if (-not $Port) {
     $raw = arduino-cli board list --format json | ConvertFrom-Json
     $boards = if ($raw.detected_ports) { $raw.detected_ports } else { $raw }
 
+    # Score serial ports:
+    #   3 = exact FQBN match
+    #   1 = some other esp32:* board match
+    #   0 = unknown / unrecognized chip (CH340, CP210x without driver db, etc.)
+    # We collect ALL serial ports in the unknown bucket too, so we can
+    # fall back to "single unknown serial port" — useful for CYD boards
+    # whose CH340 USB IDs aren't recognised as ESP32 by arduino-cli.
     $candidates = @()
+    $unknown = @()
     foreach ($b in $boards) {
         if ($b.port.protocol -ne "serial") { continue }
         $fqbns = @()
@@ -82,15 +90,29 @@ if (-not $Port) {
         elseif ($fqbns | Where-Object { $_ -like "esp32:*" })  { $score = 1 }
         if ($score -gt 0) {
             $candidates += [pscustomobject]@{ Port = $b.port.address; Score = $score; Fqbns = $fqbns }
+        } else {
+            $unknown += $b.port.address
         }
     }
-    if (-not $candidates) {
-        Write-Host "[build] No ESP32 serial port detected. Plug in the CYD or pass -Port COMx."
+
+    if ($candidates) {
+        $best = $candidates | Sort-Object -Property Score -Descending | Select-Object -First 1
+        $Port = $best.Port
+        Write-Host "[build] Found ESP32 device on $Port"
+    } elseif ($unknown.Count -eq 1) {
+        # Fallback: exactly one unrecognised serial port — almost
+        # certainly the CYD. Use it.
+        $Port = $unknown[0]
+        Write-Host "[build] No ESP32-tagged port detected; using the only serial port present: $Port"
+        Write-Host "[build] (CH340 USB IDs aren't in arduino-cli's board database. If this isn't your CYD, pass -Port COMx explicitly.)"
+    } elseif ($unknown.Count -gt 1) {
+        Write-Host "[build] Multiple unrecognised serial ports detected: $($unknown -join ', ')"
+        Write-Host "[build] Pass -Port COMx explicitly so the right one gets flashed."
+        exit 1
+    } else {
+        Write-Host "[build] No serial port detected. Plug in the CYD or pass -Port COMx."
         exit 1
     }
-    $best = $candidates | Sort-Object -Property Score -Descending | Select-Object -First 1
-    $Port = $best.Port
-    Write-Host "[build] Found ESP32 device on $Port"
 }
 
 Write-Host "[build] Uploading to $Port..."

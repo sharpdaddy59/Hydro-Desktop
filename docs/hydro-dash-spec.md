@@ -9,6 +9,19 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.4:** Per-reading colour tinting on the hero view — green for
+  fresh+real, yellow for sim, dim grey for stale (matches the strip
+  dot's existing semantics, applied per row using each sensor's own
+  sim flag). Air and Humidity share `sim_air` since the DHT20 reports
+  both. Two LovyanGFX-specific fixes: switched colour variables from
+  `uint32_t` to `uint16_t` so values dispatch through the RGB565 path
+  instead of being reinterpreted as RGB888 bytes (TFT_GREEN was
+  rendering as red); and set `rgb_order = true` on the panel so the
+  CYD's BGR-wired LCD sees correct R/B channels (TFT_YELLOW was
+  rendering as cyan/blue). `build.ps1` auto-detect now falls back to
+  "the only unrecognised serial port" when arduino-cli's USB-ID
+  database doesn't tag a device as ESP32 — useful for CH340-based
+  CYDs that show up as Unknown.
 - **v0.1.3:** Settings screen now cycles brightness mode
   (auto → full → dim → auto) instead of rotation. The rotation cycle
   was producing unreadable intermediate states that made navigation

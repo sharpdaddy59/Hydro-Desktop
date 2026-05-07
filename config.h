@@ -8,7 +8,7 @@
 
 #pragma once
 
-#define FW_VERSION       "0.1.3"
+#define FW_VERSION       "0.1.4"
 
 // ---------------------------------------------------------------------------
 // Display (ILI9341, HSPI bus, 240x320 portrait native -> rotated to 320x240)

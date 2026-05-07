@@ -131,7 +131,18 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Recent state
 
-- **v0.1.3 (current):** settings screen cycles brightness mode
+- **v0.1.4 (current):** Per-reading hero-view colour tinting and two
+  underlying LovyanGFX colour fixes. Hero readings are now green
+  (fresh+real), yellow (sim), or dim grey (stale), matching the strip
+  dot per row. Two bugs that surfaced during this work: setTextColor
+  with `uint32_t` dispatches to the RGB888 overload and reinterprets
+  the bytes (TFT_GREEN came out red — fix is to use `uint16_t`);
+  CYD's LCD is BGR-wired and needs `rgb_order = true` so MADCTL.BGR
+  is set (otherwise R/B swap and TFT_YELLOW renders as cyan).
+  `build.ps1` auto-detect now falls back to a single unrecognised
+  serial port — handles CH340-based CYDs whose USB IDs aren't in
+  arduino-cli's board database.
+- **v0.1.3:** settings screen cycles brightness mode
   (auto / full / dim) instead of rotation. The rotation cycle made
   the settings screen unreadable in transit and only rotation 4 is
   ever useful on this CYD anyway, so it's pinned via `PREFS_SCHEMA`.
