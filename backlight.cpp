@@ -6,6 +6,7 @@
 static uint8_t  s_duty       = BL_MAX_DUTY;
 static uint32_t s_last_check = 0;
 static float    s_ema        = 2000;
+static uint16_t s_last_raw   = 0;
 
 void backlight_begin() {
   // ESP32 Arduino Core 3.x LedC API: pin-based, channels are managed
@@ -15,6 +16,14 @@ void backlight_begin() {
   ledcAttach(TFT_BL, TFT_BL_PWM_FREQ, TFT_BL_PWM_BITS);
   ledcWrite(TFT_BL, BL_MAX_DUTY);
   pinMode(LDR_PIN, INPUT);
+
+  // Be explicit about ADC config so we get a usable range from the LDR.
+  // Default resolution on ESP32 is already 12-bit (0..4095), but the
+  // arduino-esp32 3.x core changed some defaults around per-pin
+  // attenuation; setting it here keeps the BL_LDR_DARK/BRIGHT values
+  // in config.h meaningful regardless of core defaults.
+  analogReadResolution(12);
+  analogSetPinAttenuation(LDR_PIN, ADC_11db);
 }
 
 void backlight_set_duty(uint8_t d) {
@@ -44,7 +53,12 @@ void backlight_loop() {
   }
 
   uint16_t raw = analogRead(LDR_PIN);
+  s_last_raw = raw;
   s_ema = s_ema * 0.85f + (float)raw * 0.15f;
   uint8_t target = duty_for_ldr((uint16_t)s_ema);
   if (target != s_duty) backlight_set_duty(target);
 }
+
+uint16_t backlight_ldr_raw()      { return s_last_raw; }
+uint16_t backlight_ldr_ema()      { return (uint16_t)s_ema; }
+uint8_t  backlight_current_duty() { return s_duty; }

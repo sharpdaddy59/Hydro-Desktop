@@ -13,3 +13,9 @@
 void backlight_begin();
 void backlight_loop();              // call from a low-rate task or loop()
 void backlight_set_duty(uint8_t d); // manual override (0..255)
+
+// Diagnostics for the settings screen. Cheap, just return cached values
+// from the most recent backlight_loop tick (plus a fresh analogRead).
+uint16_t backlight_ldr_raw();       // most recent raw ADC reading
+uint16_t backlight_ldr_ema();       // smoothed value used by auto-dim
+uint8_t  backlight_current_duty();

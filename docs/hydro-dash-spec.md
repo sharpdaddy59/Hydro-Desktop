@@ -9,6 +9,13 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.3:** Settings screen now cycles brightness mode
+  (auto → full → dim → auto) instead of rotation. The rotation cycle
+  was producing unreadable intermediate states that made navigation
+  hard, and on this CYD only rotation 4 is usable anyway — pinned
+  via PREFS_SCHEMA in `prefs.cpp`. The brightness modes were already
+  honored by `backlight.cpp::backlight_loop`; this commit just wires
+  up a UI to switch between them.
 - **v0.1.2:** Per-MAC unique hostname (`hydro-dash-<last4mac>`) used for
   mDNS, the WiFiManager AP SSID, and shown in the hero footer so
   multiple CYDs are distinguishable on the same LAN. New `device_id.cpp`

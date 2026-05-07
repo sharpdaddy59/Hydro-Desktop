@@ -131,7 +131,13 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Recent state
 
-- **v0.1.2 (current):** per-MAC unique hostname so multiple CYDs are
+- **v0.1.3 (current):** settings screen cycles brightness mode
+  (auto / full / dim) instead of rotation. The rotation cycle made
+  the settings screen unreadable in transit and only rotation 4 is
+  ever useful on this CYD anyway, so it's pinned via `PREFS_SCHEMA`.
+  Backlight modes were already implemented in `backlight.cpp`; this
+  release just adds the UI to switch between them.
+- **v0.1.2:** per-MAC unique hostname so multiple CYDs are
   distinguishable on the same LAN. `device_id.cpp` / `.h` computes
   `hydro-dash-<last4mac>` once at boot; used for `MDNS.begin`, the
   WiFiManager AP SSID (now `<hostname>-setup`), and shown in the hero
