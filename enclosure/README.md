@@ -5,17 +5,24 @@ Sunton ESP32-2432S028R "Cheap Yellow Display."
 
 ## Features
 
-- Two-piece **snap-fit** body — no screws, no inserts, no fasteners.
-- **PCB retention** via four alignment posts that pass through the
-  CYD's M2.5 mounting holes with friction ribs.
-- **Both USB ports** exposed on one short edge (USB-C and Micro-USB).
-- **Integrated stylus channel** along one long edge with a thumb-grip
-  notch at the far end.
+- Two-piece body, **friction-fit closure** — no screws, no inserts,
+  no fasteners. The front bezel has hollow tubes that slide over
+  the back shell's PCB-retention posts; friction in the bore holds
+  the case closed. Tune `FRONT_BORE_DIAM` for the desired snap feel.
+- **Stepped PCB-retention posts** — a wider shoulder under the PCB
+  acts as a positive stop the board sits on. A narrower shaft above
+  passes through the M2.5 mounting holes and protrudes up into the
+  front bezel's bore for the friction fit.
+- **Both USB ports optionally exposed** on one short edge (USB-C and
+  Micro-USB), independently toggleable.
+- **Optional integrated stylus channel** along one long edge with a
+  thumb-grip notch at the far end.
 - **Removable kickstand** for desk use, **wall keyhole** on the back
   for hanging when the kickstand is off.
 - **LDR pinhole** on the front bezel (small enough not to dominate
   the look; useful on units where the LDR is functional).
-- **Vent slots** on the back so the ESP32 doesn't cook.
+- **Optional vent slots** on the back so the ESP32 doesn't cook.
+- **Pry slot** at one corner of the seam for clean disassembly.
 
 ## Files
 
@@ -24,6 +31,22 @@ Sunton ESP32-2432S028R "Cheap Yellow Display."
   `"back"`, `"kickstand"`, `"assembly"`, or `"exploded"`. Render
   (F6), export STL.
 - `stl/` — gitignored. Your local renders go here.
+
+## Feature toggles
+
+A block of booleans near the top of the SCAD file turns the optional
+parts on or off without touching geometry:
+
+```scad
+USE_STYLUS     = true;   // integrated stylus channel on the long edge
+USE_USB_C      = true;   // USB-C cutout on the short edge
+USE_MICRO_USB  = true;   // Micro-USB cutout on the short edge
+USE_KICKSTAND  = true;   // detachable rear kickstand + matching sockets
+USE_BACK_VENTS = true;   // vents on the back face
+```
+
+Set any to `false` and re-render — the geometry disappears with no
+parameter cleanup needed.
 
 ## Workflow
 
@@ -36,11 +59,15 @@ update at minimum:
 - `PCB_LEN`, `PCB_WID`, `PCB_THK` — overall PCB size
 - `MOUNT_HOLE_INSET` — distance from PCB edge to the centre of each
   M2.5 mounting hole
-- `LCD_*` — the LCD module's footprint and its offset on the PCB
-- `SCREEN_OFFSET_X`, `SCREEN_OFFSET_Y` — where the active glass area
-  sits relative to PCB corners
-- `USB_C_Y_CENTER`, `MICRO_USB_Y_CENTER`, `*_Z_OFFSET` — where each
-  USB connector sits on the PCB +X short edge
+- `LCD_LEN`, `LCD_WID`, `LCD_OFFSET_X`, `LCD_OFFSET_Y` — the LCD
+  module's footprint and its offset on the PCB
+- `LCD_BEZEL_X_LEFT`, `LCD_BEZEL_X_RIGHT`, `LCD_BEZEL_Y` — the
+  non-active border around the visible glass on each side of the
+  LCD module. (X is split because the CYD's bezel is asymmetric on
+  the long axis.) The active glass cutout is derived from these.
+- `USB_C_Y_CENTER`, `MICRO_USB_Y_CENTER`, `*_Z_OFFSET`,
+  `*_WIDTH`, `*_HEIGHT` — where each USB connector sits on the
+  PCB +X short edge
 - `LDR_X_FROM_CORNER`, `LDR_Y_FROM_CORNER` — visible LDR component
 
 Every parameter that needs measuring is flagged `MEASURE` in a
@@ -48,91 +75,98 @@ comment in the SCAD file.
 
 ### 2. Render exploded view first
 
-```
+```scad
 mode = "exploded";
 ```
 
 Render (F6). You should see four parts (PCB dummy, back shell,
-front bezel, kickstand) clearly separated. Confirm the screen cutout
-in the front bezel lines up with the LCD on the PCB dummy and that
-the USB cutouts in the back shell line up with where the connectors
-would be.
+front bezel, kickstand) clearly separated. Confirm:
 
-### 3. Print a fit-test
+- The screen cutout in the front bezel lines up with the active glass
+  region of the LCD on the PCB dummy.
+- The USB cutouts in the back shell line up with where the connectors
+  would be.
+- The four front-bezel tubes sit directly above the four back-shell
+  posts.
+
+### 3. Fit-test the back shell
 
 Render `mode = "back"`, export, slice at 0.3 mm layer height with
-0 % infill and 2 perimeters. Print the back shell only — total
-print time ~30-40 min.
+0% infill and 2 perimeters. Print the back shell only — total
+print time ~30–40 min on a typical 200 mm/s printer.
 
-Drop the bare PCB onto the four alignment posts. Should slide on
-with firm finger pressure, no force.
+Drop the bare PCB onto the four posts. The PCB should slide down the
+shaft until it lands flat on the four shoulder tops — no force, no
+wiggle. Check:
 
-- **Too tight?** Reduce `PCB_POST_RIB_OVERSIZE` by 0.05 mm.
-- **Too loose / wobbles?** Increase by 0.05 mm.
-- **PCB sits too high / posts protrude past PCB?** Reduce
-  `PCB_POST_PROTRUDE`.
+- **PCB sits too high above the cavity floor?** Reduce `BACK_DEPTH`
+  (which sets the shoulder height too).
+- **PCB tilted / shoulders not flush with PCB underside?** Verify
+  `MOUNT_HOLE_INSET` matches your actual board.
+- **PCB shaft doesn't fit through the M2.5 hole?** Reduce
+  `PCB_POST_DIAM` (default 2.0 mm).
+- **PCB shaft is too loose in the hole?** Increase `PCB_POST_DIAM`
+  by 0.05 mm at a time.
 
-Reprint the back shell only until fit is right.
+### 4. Fit-test the front bezel
 
-### 4. Print front bezel and check snap-fit
+Render `mode = "front"`, slice the same way, print. With the back
+shell + PCB still assembled, lower the front bezel so its tubes
+align with the back-shell post tips and press down evenly. The
+tubes should slide over the post tips with a firm friction grip.
 
-Render `mode = "front"`, slice and print at the same low-quality
-draft settings. Try snapping the front onto the back-with-PCB-already-
-seated.
-
-- **Won't snap together?** Increase `SNAP_LIP_DEPTH` by 0.1 mm or
-  decrease `SNAP_HOOK_HEIGHT` by 0.1 mm.
-- **Too loose / pops apart easily?** Reverse the above.
-- **Snaps OK but won't open?** Verify the pry slot is reachable.
-  You can deepen `PRY_SLOT_W` and `PRY_SLOT_D`.
+- **Too loose / case falls open?** Reduce `FRONT_BORE_DIAM` by
+  0.05 mm at a time.
+- **Too tight / case won't close?** Increase `FRONT_BORE_DIAM`.
+- **Case closes but won't open?** Verify the pry slot is reachable
+  at one corner of the seam; deepen `PRY_SLOT_W` / `PRY_SLOT_D` if
+  needed.
 
 ### 5. Final print
 
 Once parameters are dialed in:
 
-- **Material:** PETG preferred (better living-hinge / snap fatigue
-  life than PLA). PLA+ also works.
+- **Material:** PETG preferred (better fatigue life and slight
+  give for the friction fit). PLA+ also works.
 - **Layer height:** 0.2 mm.
-- **Infill:** 20 % gyroid or grid.
+- **Infill:** 20% gyroid or grid.
 - **Perimeters:** 3.
-- **Print orientation:** front bezel face-down, back shell open-side-
-  up. The cantilever beams on the front bezel print best when the
-  beam axis is vertical so the engagement face isn't a layer-shear
-  weak point — the slicer should show this naturally for the
-  "front bezel face-down" orientation.
-- **Supports:** none needed if you orient as above.
+- **Print orientation:** front bezel face-down (the front face is
+  the smoothest layer), back shell open-side-up.
+- **Supports:** none needed.
 
-Total final print: ~3-4 hours for both halves on a typical 200 mm/s
-printer at 0.2 mm.
+Total final print: ~3–4 hours for both halves at 0.2 mm.
 
 ## Assembly
 
-1. Drop the PCB onto the back shell's four posts. Press evenly until
-   the PCB seats against the post shoulders.
-2. Lower the front bezel onto the back shell. Align the screen
-   cutout over the LCD. Press the long edges down evenly until the
-   four snap clips click. The seam should disappear into a thin,
-   even line.
-3. (Optional) Push the kickstand pegs into the back shell sockets
+1. Drop the PCB onto the back shell's four posts. The board lands
+   on the shoulder tops; the shaft passes through the mounting
+   holes and protrudes a few millimetres above the PCB.
+2. Lower the front bezel so the four tubes align with the four
+   protruding post tips. Press evenly until the bezel is flush with
+   the back shell rim — the friction in the bores should resist
+   pulling apart.
+3. (Optional) Push the kickstand pegs into the back-shell sockets
    until they bottom out.
 
 ## Disassembly
 
-Insert a flat tool (small flathead screwdriver, plastic spudger) into
-the **pry slot** at the lower-left corner of the seam. Twist gently
-to spring the nearest snap clip out of its lip, then walk around the
-perimeter releasing the others. PCB lifts off the posts with finger
-pressure.
+Insert a flat tool (small flathead screwdriver, plastic spudger)
+into the **pry slot** at one corner of the seam. Twist gently to
+spring the front-bezel tubes off the back-shell posts at the nearest
+corner; the rest of the perimeter follows. PCB lifts off the posts
+with finger pressure.
 
-To remove the kickstand: squeeze the small finger-relief slits on
-either side of each peg and pull straight away from the back shell.
+To remove the kickstand: squeeze the small finger-relief slits
+beside each peg and pull straight away from the back shell.
 
 ## Wall mounting
 
 Drive a #6 round-head wood screw into the wall, leaving the head
 proud by ~3 mm. The keyhole on the back of the case slips over the
-head, then the case slides down to lock in the slot. Confirm with
-a light tug before letting go.
+head (big circle on top), then the case slides down so the screw
+shaft catches in the narrow slot. Confirm with a light tug before
+letting go.
 
 ## Parameter reference
 
@@ -141,15 +175,17 @@ Group highlights:
 
 | Group | Touches |
 |-------|---------|
+| `USE_*` | Feature toggles for optional parts |
 | `PCB_*` | Board outline; affects every other piece's size |
-| `LCD_*`, `SCREEN_*` | Front bezel screen cutout |
-| `USB_*` | Back shell USB cutouts |
-| `LDR_*` | Front bezel pinhole position |
+| `LCD_*`, `LCD_BEZEL_*` | LCD module footprint and bezel widths (active-glass cutout is derived) |
+| `USB_C_*`, `MICRO_USB_*` | Back-shell USB cutout positions and sizes |
+| `LDR_*` | Front-bezel pinhole position |
 | `STYLUS_*` | Side channel diameter, length, retention notch |
-| `PCB_POST_*` | PCB retention fit |
-| `SNAP_*` | Snap-fit clip behavior |
+| `PCB_POST_*` | Back-shell shoulder + shaft dimensions |
+| `FRONT_POST_*`, `FRONT_BORE_*` | Front-bezel mating tube fit |
 | `KICKSTAND_*` | Detachable stand geometry |
 | `KEYHOLE_*` | Wall-mount slot dimensions |
+| `PRY_SLOT_*` | Disassembly tool slot |
 | `WALL`, `*_DEPTH`, `CASE_FILLET` | Overall body |
 
 ## Notes
