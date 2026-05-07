@@ -4,7 +4,12 @@
 
 DeviceRecord    g_devices[MAX_DEVICES];
 std::atomic<uint8_t> g_device_count{0};
+std::atomic<uint32_t> g_state_version{0};
 SemaphoreHandle_t    g_devices_mutex = nullptr;
+
+void state_bump_version() {
+  g_state_version.fetch_add(1, std::memory_order_relaxed);
+}
 
 void state_init() {
   g_devices_mutex = xSemaphoreCreateMutex();
@@ -53,5 +58,6 @@ int state_insert(const char* hostname) {
   g_device_count.store(n + 1);
 
   xSemaphoreGive(g_devices_mutex);
+  state_bump_version();
   return n;
 }

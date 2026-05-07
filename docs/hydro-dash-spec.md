@@ -9,6 +9,17 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.1:** Replaced 2×2 grid with single-device "hero" view +
+  auto-cycle + status-dot strip (4 tiles at 160×120 with size-1 font
+  was unreadable from desk distance). Dropped the `cores3-hydro-`
+  hostname-prefix filter in discovery — now probes `/sensors` shape
+  on any LAN HTTP service, so user-renamed hydros are found. Render
+  path now version-gated (skips draw unless `g_state_version`
+  advanced) — kills idle flicker. **Panel config locked to the
+  empirically-determined CYD-S028R values:** `panel_width=320`,
+  `panel_height=240`, `offset_y=80`, `setRotation(4)`. Settings
+  screen reduced to any-tap-cycles-rotation, long-press-returns;
+  touch tap-on-release bug fixed in `touch.cpp`.
 - **v0.1.0:** initial scaffold — boot orchestration, LovyanGFX panel
   config for the CYD, stub UI screens, mDNS discovery + HTTP polling
   tasks, WiFiManager AP onboarding, NVS-backed prefs (manual hosts,

@@ -47,6 +47,7 @@ static bool poll_sensors(DeviceRecord& d) {
   d.consecutive_fails.store(0);
   d.stale.store(false);
   d.has_data.store(true);
+  state_bump_version();
   return true;
 }
 
@@ -86,7 +87,10 @@ static void task_poller(void* /*arg*/) {
       if (!poll_sensors(d)) {
         uint16_t f = d.consecutive_fails.load() + 1;
         d.consecutive_fails.store(f);
-        if (f >= STALE_AFTER_MISSES) d.stale.store(true);
+        if (f == STALE_AFTER_MISSES) {
+          d.stale.store(true);
+          state_bump_version();   // tile color flips; redraw the strip
+        }
       }
       if (millis() - last_status_run[i] > STATUS_INTERVAL_MS) {
         poll_status(d);

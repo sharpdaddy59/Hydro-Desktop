@@ -65,20 +65,34 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Critical gotchas
 
-1. **GPIO 21 is shared.** Backlight and the P3 expansion header both
+1. **CYD-S028R LovyanGFX panel config is fiddly and non-obvious.** The
+   working combination, found empirically, is in `ui.cpp::LGFX_CYD`:
+   `panel_width=320, panel_height=240` (swapped from chip-native 240×320),
+   `offset_y=80`, and `setRotation(4)`. Don't switch to `LGFX_AUTODETECT`
+   — its runtime probe gives a white screen on this board. Don't change
+   the swap or offset without re-running `cyd-rotation-test` (the
+   sibling diagnostic sketch I deleted; recreate as needed). The schema
+   bump in `prefs.cpp::PREFS_SCHEMA` is what forces the right rotation
+   on existing units after a config change.
+2. **GPIO 21 is shared.** Backlight and the P3 expansion header both
    use it. If you ever wire something to P3 pin 4, the panel goes dark.
-2. **VSPI is shared with the SD slot.** The current scaffold doesn't use
+3. **VSPI is shared with the SD slot.** The current scaffold doesn't use
    SD, so no contention. If SD is ever added, the LovyanGFX touch driver
    needs `bus_shared = true` and explicit lock management.
-3. **GPIO 35 is input-only.** Don't try to drive it as an output.
-4. **Touch calibration ships with placeholder values** in `ui.cpp`. A
+4. **GPIO 35 is input-only.** Don't try to drive it as an output.
+5. **Touch calibration ships with placeholder values** in `ui.cpp`. A
    fresh unit will be visibly off-axis on first press until the
    recalibration flow lands. Numbers stored via
    `prefs_save_touch_cal`; settings-screen handler is a stub.
-5. **WiFiManager blocks** in `wifi_setup_begin()` until creds are
+6. **WiFiManager blocks** in `wifi_setup_begin()` until creds are
    submitted or `AP_TIMEOUT_S` expires (default 180 s). On timeout we
    reboot — there's nothing useful for an offline dashboard to do.
-6. **GitHub Actions Node 20 deprecation warning** is the same as in
+7. **`FY()` in `ui.h` is currently an identity passthrough** — it was
+   added to flip Y when an earlier panel config inverted the canvas Y
+   axis. The locked-in config doesn't need flipping, but the hook is
+   left in place so a future panel-config change can reinstate the
+   flip without touching every draw call.
+8. **GitHub Actions Node 20 deprecation warning** is the same as in
    cores3-hydro — non-blocking, will resolve when the action authors
    ship Node 24 majors.
 
@@ -117,13 +131,23 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Recent state
 
-- **v0.1.0 (current):** initial scaffold. Boot orchestration, LovyanGFX
-  panel config for the CYD (ILI9341 HSPI + XPT2046 VSPI + PWM
-  backlight), stub UI screens (grid renders real data, detail/settings
-  are functional but minimal), mDNS discovery + per-device HTTP polling
-  tasks, WiFiManager AP onboarding, NVS prefs (manual hosts,
-  brightness, rotation, touch calibration), management HTTP API,
-  GitHub Actions release workflow. Open work tracked at the bottom of
+- **v0.1.1 (current):** working dashboard end-to-end. Hero-view layout
+  (one device at a time with auto-cycle and a status-dot strip on top)
+  replaced the original 2×2 grid because text-size-1 in 160×120 tiles
+  was unreadable from desk distance. Discovery dropped the
+  `cores3-hydro-` hostname-prefix filter and now probes any LAN HTTP
+  service for a hydro-shaped `/sensors` response, since the user can
+  rename units. Render path throttled to 500 ms and skipped entirely
+  unless `g_state_version` advanced — kills the idle flicker. **Panel
+  config locked to the empirically-determined values** (see gotcha
+  #1 above): `panel_width=320, panel_height=240, offset_y=80, rotation 4`,
+  `PREFS_SCHEMA=6`. Settings screen is now any-tap-cycles-rotation,
+  long-press-returns; touch tap-on-release bug fixed in `touch.cpp`.
+- **v0.1.0:** initial scaffold. Boot orchestration, LovyanGFX panel
+  config for the CYD (ILI9341 HSPI + XPT2046 VSPI + PWM backlight),
+  stub UI screens, mDNS discovery + per-device HTTP polling tasks,
+  WiFiManager AP onboarding, NVS prefs, management HTTP API, GitHub
+  Actions release workflow. Open work tracked at the bottom of
   `docs/hydro-dash-spec.md`.
 
 ## Where to look first

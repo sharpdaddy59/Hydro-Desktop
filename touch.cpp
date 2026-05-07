@@ -14,6 +14,7 @@ static int16_t  s_press_x       = 0;
 static int16_t  s_press_y       = 0;
 static uint32_t s_press_started = 0;
 static bool     s_long_fired    = false;
+static bool     s_drag_too_far  = false;
 
 void touch_begin() {
   // LovyanGFX's panel.init() (called from ui_begin) brings up the touch
@@ -29,8 +30,7 @@ bool touch_is_pressed() {
 bool touch_read_raw(int16_t& x, int16_t& y) {
   uint16_t rx, ry;
   bool ok = ui_gfx().getTouch(&rx, &ry);
-  x = (int16_t)rx;
-  y = (int16_t)ry;
+  if (ok) { x = (int16_t)rx; y = (int16_t)ry; }
   return ok;
 }
 
@@ -39,19 +39,26 @@ void touch_loop() {
   bool pressed = touch_read_raw(x, y);
 
   if (pressed && !s_was_pressed) {
+    // press start — record anchor, reset gesture state
     s_press_x = x;
     s_press_y = y;
     s_press_started = millis();
     s_long_fired = false;
+    s_drag_too_far = false;
   } else if (pressed && s_was_pressed) {
-    if (!s_long_fired && millis() - s_press_started > 600 &&
-        abs(x - s_press_x) < 12 && abs(y - s_press_y) < 12) {
-      ui_handle_long_press(x, y);
+    // still pressed — track drag, fire long-press once
+    if (abs(x - s_press_x) > 12 || abs(y - s_press_y) > 12) s_drag_too_far = true;
+    if (!s_long_fired && !s_drag_too_far &&
+        millis() - s_press_started > 600) {
+      ui_handle_long_press(s_press_x, s_press_y);
       s_long_fired = true;
     }
   } else if (!pressed && s_was_pressed) {
-    if (!s_long_fired &&
-        abs(x - s_press_x) < 12 && abs(y - s_press_y) < 12) {
+    // release — dispatch tap if it wasn't already a long-press and didn't drag.
+    // Note: on release, the touch read returns false and leaves x/y unchanged,
+    // so we must compare against the press anchor or last-known position
+    // (already enforced via s_drag_too_far during the press window).
+    if (!s_long_fired && !s_drag_too_far) {
       ui_handle_touch(s_press_x, s_press_y);
     }
   }

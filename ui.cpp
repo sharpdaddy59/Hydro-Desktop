@@ -1,20 +1,22 @@
-// ui.cpp — LovyanGFX panel definition for the Sunton ESP32-2432S028R
-// plus the screen state machine.
+// ui.cpp — LovyanGFX panel + screen state machine.
 //
-// The panel/bus/touch config below is the canonical CYD configuration —
-// don't change pin numbers without updating config.h to match.
+// Hand-rolled panel config for the Sunton ESP32-2432S028R. We tried
+// LovyanGFX's autodetect path; on this specific board it produced a
+// blank screen (the runtime probe doesn't always latch onto the right
+// chip variant). Hand-rolling is more reliable — pins live in config.h.
 
 #define LGFX_USE_V1
 #include "ui.h"
-#include "ui_grid.h"
+#include "ui_hero.h"
 #include "ui_detail.h"
 #include "ui_settings.h"
+#include "state.h"
 #include "config.h"
 #include "prefs.h"
 
 class LGFX_CYD : public lgfx::LGFX_Device {
-  // The backlight pin is owned by backlight.cpp (LedC PWM driven by the
-  // LDR auto-dim policy), so no Light_* instance is configured here.
+  // Backlight is owned by backlight.cpp (LedC PWM driven by the LDR
+  // auto-dim policy), so no Light_* instance is configured here.
   lgfx::Panel_ILI9341   _panel;
   lgfx::Bus_SPI         _bus;
   lgfx::Touch_XPT2046   _touch;
@@ -42,10 +44,15 @@ public:
       c.pin_cs           = TFT_CS;
       c.pin_rst          = TFT_RST;
       c.pin_busy         = -1;
-      c.panel_width      = 240;
-      c.panel_height     = 320;
+      // CYD-S028R panel mounting quirk: telling LovyanGFX the panel is
+      // natively 320x240 makes width()/height() report landscape values
+      // (so layout fills the user's view). offset_y=80 compensates for
+      // the chip's GRAM-row alignment in this rotation. Empirically
+      // determined via the cyd-rotation-test sketch.
+      c.panel_width      = 320;
+      c.panel_height     = 240;
       c.offset_x         = 0;
-      c.offset_y         = 0;
+      c.offset_y         = 80;
       c.offset_rotation  = 0;
       c.dummy_read_pixel = 8;
       c.dummy_read_bits  = 1;
@@ -58,9 +65,6 @@ public:
     }
     {
       auto c = _touch.config();
-      // Calibration values are placeholders — the settings screen's
-      // "Recalibrate touch" flow overwrites these and persists the
-      // result in NVS via prefs.cpp.
       c.x_min      = 300;
       c.x_max      = 3900;
       c.y_min      = 300;
@@ -82,7 +86,7 @@ public:
 };
 
 static LGFX_CYD          s_gfx;
-static UiScreen          s_screen = UI_SCREEN_GRID;
+static UiScreen          s_screen = UI_SCREEN_HERO;
 static char              s_status[64] = {0};
 
 lgfx::LGFX_Device& ui_gfx() { return s_gfx; }
@@ -98,6 +102,7 @@ void ui_begin() {
 void ui_set_screen(UiScreen s) {
   s_screen = s;
   s_gfx.fillScreen(TFT_BLACK);
+  state_bump_version();
 }
 
 UiScreen ui_current_screen() { return s_screen; }
@@ -105,31 +110,47 @@ UiScreen ui_current_screen() { return s_screen; }
 void ui_set_status(const char* msg) {
   strncpy(s_status, msg ? msg : "", sizeof(s_status) - 1);
   s_status[sizeof(s_status) - 1] = '\0';
+  state_bump_version();
 }
 
 void ui_loop() {
+  // Per-screen pre-render hooks (cycle timers, animations) need to run
+  // every iteration so they're not held off by the dirty-version skip
+  // below. Hero auto-cycle is the only one currently.
+  if (s_screen == UI_SCREEN_HERO) ui_hero_tick();
+
+  // Skip the render entirely if nothing display-relevant has changed
+  // since the last successful draw. This is what keeps the screen still
+  // between data updates instead of flickering through clear-then-redraw
+  // cycles at 2 Hz.
+  static uint32_t last_drawn_version = (uint32_t)-1;
+  uint32_t v = g_state_version.load(std::memory_order_relaxed);
+  if (v == last_drawn_version) return;
+  last_drawn_version = v;
+
   switch (s_screen) {
-    case UI_SCREEN_GRID:     ui_grid_draw();     break;
+    case UI_SCREEN_HERO:     ui_hero_draw();     break;
     case UI_SCREEN_DETAIL:   ui_detail_draw();   break;
     case UI_SCREEN_SETTINGS: ui_settings_draw(); break;
   }
 
   if (s_status[0]) {
     s_gfx.setTextColor(TFT_YELLOW, TFT_BLACK);
-    s_gfx.setCursor(8, TFT_H - 24);
+    s_gfx.setCursor(8, FY(s_gfx.height() - 24, 8));
     s_gfx.print(s_status);
   }
 }
 
 void ui_handle_touch(int16_t x, int16_t y) {
   switch (s_screen) {
-    case UI_SCREEN_GRID:     ui_grid_handle_touch(x, y);     break;
+    case UI_SCREEN_HERO:     ui_hero_handle_touch(x, y);     break;
     case UI_SCREEN_DETAIL:   ui_detail_handle_touch(x, y);   break;
     case UI_SCREEN_SETTINGS: ui_settings_handle_touch(x, y); break;
   }
 }
 
 void ui_handle_long_press(int16_t /*x*/, int16_t /*y*/) {
-  // Long-press anywhere on the grid opens settings.
-  if (s_screen == UI_SCREEN_GRID) ui_set_screen(UI_SCREEN_SETTINGS);
+  // Long-press toggles between hero and settings.
+  if (s_screen == UI_SCREEN_HERO)          ui_set_screen(UI_SCREEN_SETTINGS);
+  else if (s_screen == UI_SCREEN_SETTINGS) ui_set_screen(UI_SCREEN_HERO);
 }

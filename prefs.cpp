@@ -9,8 +9,14 @@ static Preferences s_hosts;    // namespace "dash-hosts"
 static Preferences s_aliases;  // namespace "dash-alias"
 static Preferences s_touch;    // namespace "dash-touch"
 
+// Bump this whenever the meaning of stored prefs changes in a way that
+// existing values would be invalid (e.g., we change the panel config in
+// ui.cpp and the old rotation value would produce garbled output).
+// On boot, mismatched schema triggers a one-time reset to safe defaults.
+static constexpr uint8_t PREFS_SCHEMA = 6;
+
 static BrightnessMode s_mode = BRIGHTNESS_AUTO;
-static uint8_t        s_rot  = 1;             // 320x240 landscape
+static uint8_t        s_rot  = 4;             // CYD landscape (panel swap + offset_y=80 in ui.cpp)
 static std::vector<std::string> s_manual_hosts;
 
 static void load_manual_hosts() {
@@ -40,9 +46,25 @@ static void save_manual_hosts() {
 
 void prefs_load() {
   s_ui.begin("dash-ui", true);
-  s_mode = (BrightnessMode)s_ui.getUChar("mode", BRIGHTNESS_AUTO);
-  s_rot  = s_ui.getUChar("rot", 1);
+  uint8_t schema = s_ui.getUChar("schema", 0);
   s_ui.end();
+
+  if (schema != PREFS_SCHEMA) {
+    // First boot of this build (or a schema-incompatible upgrade).
+    // Reset to safe defaults and write the new schema number.
+    s_mode = BRIGHTNESS_AUTO;
+    s_rot  = 4;
+    s_ui.begin("dash-ui", false);
+    s_ui.putUChar("mode",   (uint8_t)s_mode);
+    s_ui.putUChar("rot",    s_rot);
+    s_ui.putUChar("schema", PREFS_SCHEMA);
+    s_ui.end();
+  } else {
+    s_ui.begin("dash-ui", true);
+    s_mode = (BrightnessMode)s_ui.getUChar("mode", BRIGHTNESS_AUTO);
+    s_rot  = s_ui.getUChar("rot", 4);
+    s_ui.end();
+  }
   load_manual_hosts();
 }
 

@@ -49,7 +49,14 @@ extern DeviceRecord    g_devices[MAX_DEVICES];
 extern std::atomic<uint8_t> g_device_count;
 extern SemaphoreHandle_t    g_devices_mutex;
 
+// Bumped whenever something display-relevant changes (new poll data,
+// stale-flag flip, device added, focus/pause/screen change). The UI
+// loop skips a redraw when the version hasn't moved since last frame —
+// this is what kills idle flicker without per-element dirty-tracking.
+extern std::atomic<uint32_t> g_state_version;
+
 // Helpers (state.cpp)
 void state_init();
 int  state_find_by_hostname(const char* hostname);   // -1 if not found
 int  state_insert(const char* hostname);             // -1 if MAX_DEVICES reached
+void state_bump_version();                            // invalidate UI cache

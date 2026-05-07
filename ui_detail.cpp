@@ -11,20 +11,21 @@ void ui_detail_set_device(int8_t device_idx) { s_idx = device_idx; }
 void ui_detail_draw() {
   auto& g = ui_gfx();
   if (s_idx < 0 || s_idx >= (int8_t)g_device_count.load()) {
-    ui_set_screen(UI_SCREEN_GRID);
+    ui_set_screen(UI_SCREEN_HERO);
     return;
   }
   const DeviceRecord& d = g_devices[s_idx];
 
+  g.fillScreen(TFT_BLACK);
   g.setTextColor(TFT_WHITE, TFT_BLACK);
   g.setTextSize(2);
-  g.setCursor(8, 4);
+  g.setCursor(8, FY(4, 16));
   g.print(d.hostname);
 
   g.setTextSize(1);
   int y = 32;
   auto line = [&](const char* fmt, auto v) {
-    g.setCursor(8, y); g.printf(fmt, v); y += 14;
+    g.setCursor(8, FY(y, 8)); g.printf(fmt, v); y += 14;
   };
   line("Water temp: %.2f C",   d.water_temp.load());
   line("Air temp:   %.2f C",   d.air_temp.load());
@@ -36,10 +37,10 @@ void ui_detail_draw() {
   line("Misses:     %u",       (unsigned)d.consecutive_fails.load());
 
   g.setTextColor(TFT_DARKGREY, TFT_BLACK);
-  g.setCursor(8, TFT_H - 16);
+  g.setCursor(8, FY(g.height() - 16, 8));
   g.print("Tap anywhere to return");
 }
 
 void ui_detail_handle_touch(int16_t /*x*/, int16_t /*y*/) {
-  ui_set_screen(UI_SCREEN_GRID);
+  ui_set_screen(UI_SCREEN_HERO);
 }
