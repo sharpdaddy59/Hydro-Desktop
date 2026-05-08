@@ -4,4 +4,4 @@
 .openscad-cache/
 
 # Local STL exports — re-rendered from .scad as needed
-stl/
+
