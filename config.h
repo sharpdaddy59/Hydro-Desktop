@@ -8,7 +8,7 @@
 
 #pragma once
 
-#define FW_VERSION       "0.1.4"
+#define FW_VERSION       "0.1.5"
 
 // ---------------------------------------------------------------------------
 // Display (ILI9341, HSPI bus, 240x320 portrait native -> rotated to 320x240)
@@ -64,7 +64,19 @@
 #define AP_TIMEOUT_S             180
 
 // Backlight auto-dim
+//
+// CYD wiring (per the Sunton schematic): R10 1MΩ pull-up to 3V3, LDR
+// between GPIO 34 and GND. So bright light drops the LDR's resistance,
+// pulls the tap toward GND, and produces a LOW raw ADC value. Dark
+// produces a HIGH raw value. Constants below are named for the room
+// condition, not the raw direction — so BL_LDR_BRIGHT < BL_LDR_DARK
+// numerically.
+//
+// Values measured at ADC_6db attenuation through the enclosure cover:
+// indoor-lit ≈ 170 raw, dim ≈ 300, lights-out ≈ 500. Headroom added
+// at both ends so brighter-than-tested and darker-than-tested clamp
+// cleanly to MAX/MIN duty.
 #define BL_MAX_DUTY              255
 #define BL_MIN_DUTY              30
-#define BL_LDR_DARK              200   // LDR ADC raw value treated as "dark room"
-#define BL_LDR_BRIGHT            3000  // ADC raw value treated as "bright room"
+#define BL_LDR_BRIGHT            150   // raw ADC when room is bright (low because of CYD wiring)
+#define BL_LDR_DARK              550   // raw ADC when room is dark (high because of CYD wiring)

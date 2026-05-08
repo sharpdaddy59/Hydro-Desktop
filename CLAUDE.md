@@ -131,7 +131,17 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Recent state
 
-- **v0.1.4 (current):** Per-reading hero-view colour tinting and two
+- **v0.1.5 (current):** Auto-dim polarity fix. The CYD's LDR is wired
+  with R10 (1MΩ) pulling GPIO 34 up to 3V3 and the LDR pulling it down
+  to GND — so bright light = low raw ADC, dark = high. `backlight.cpp`
+  previously had the comparison backwards, which meant the dimmer was
+  brightening dark rooms and dimming lit ones. Polarity flipped,
+  thresholds rebased to the measured range (`BL_LDR_BRIGHT=150`,
+  `BL_LDR_DARK=550` at ADC_6db), attenuation pinned to 6 dB (0 dB
+  saturates near-bright; 11 dB falls into the ADC dead-zone). Added
+  `docs/cyd-ldr-test/` standalone diagnostic for re-calibrating on a
+  different board.
+- **v0.1.4:** Per-reading hero-view colour tinting and two
   underlying LovyanGFX colour fixes. Hero readings are now green
   (fresh+real), yellow (sim), or dim grey (stale), matching the strip
   dot per row. Two bugs that surfaced during this work: setTextColor

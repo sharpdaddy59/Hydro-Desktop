@@ -9,6 +9,21 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.5:** Auto-dim polarity fix. The CYD's LDR is wired with the
+  pull-up high (R10 1MΩ to 3V3, LDR to GND, GPIO 34 between them), so
+  bright light produces a LOW raw ADC value and dark produces a HIGH
+  one — opposite to what `backlight.cpp` previously assumed. The old
+  mapping was running the dimmer backwards: dimming the screen in lit
+  rooms and brightening it in dark ones. Polarity flipped in
+  `duty_for_ldr()`, thresholds rebased to the empirically-measured
+  range (`BL_LDR_BRIGHT=150`, `BL_LDR_DARK=550` at 6 dB attenuation),
+  and ADC attenuation pinned to 6 dB (0 dB compresses the operating
+  range into half-scale; 11 dB pushes the bright end below the ADC's
+  lower dead-zone and reads zero). Added a standalone diagnostic at
+  `docs/cyd-ldr-test/` that probes GPIO 34 across all four
+  attenuations with a back-to-back burst and rolling stats — useful
+  for sanity-checking the LDR on a fresh CYD or recalibrating the
+  thresholds for a board with different LDR characteristics.
 - **v0.1.4:** Per-reading colour tinting on the hero view — green for
   fresh+real, yellow for sim, dim grey for stale (matches the strip
   dot's existing semantics, applied per row using each sensor's own

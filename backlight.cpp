@@ -5,7 +5,7 @@
 
 static uint8_t  s_duty       = BL_MAX_DUTY;
 static uint32_t s_last_check = 0;
-static float    s_ema        = 2000;
+static float    s_ema        = 300;   // mid-range under the inverted CYD wiring; converges in a few samples
 static uint16_t s_last_raw   = 0;
 
 void backlight_begin() {
@@ -22,8 +22,15 @@ void backlight_begin() {
   // arduino-esp32 3.x core changed some defaults around per-pin
   // attenuation; setting it here keeps the BL_LDR_DARK/BRIGHT values
   // in config.h meaningful regardless of core defaults.
+  //
+  // 6 dB attenuation is empirically the sweet spot on this board: at
+  // 0 dB the indoor-lit reading is already at half-scale (no headroom
+  // toward dark); at 11 dB the bright end falls into the ADC's lower
+  // dead-zone (~150 mV) and reads zero. 6 dB keeps the full lit→dark
+  // sweep within (~50, ~3000) raw with clean stable samples. See the
+  // `docs/cyd-ldr-test/` diagnostic for measurements.
   analogReadResolution(12);
-  analogSetPinAttenuation(LDR_PIN, ADC_11db);
+  analogSetPinAttenuation(LDR_PIN, ADC_6db);
 }
 
 void backlight_set_duty(uint8_t d) {
@@ -32,13 +39,16 @@ void backlight_set_duty(uint8_t d) {
 }
 
 static uint8_t duty_for_ldr(uint16_t raw) {
-  // Inverse mapping: brighter room (higher ADC) -> higher backlight duty.
-  // The CYD's LDR is wired so dark = low ADC, light = high ADC.
-  if (raw <= BL_LDR_DARK)   return BL_MIN_DUTY;
-  if (raw >= BL_LDR_BRIGHT) return BL_MAX_DUTY;
-  uint32_t span = BL_LDR_BRIGHT - BL_LDR_DARK;
-  uint32_t pos  = raw - BL_LDR_DARK;
-  return BL_MIN_DUTY + (uint8_t)((BL_MAX_DUTY - BL_MIN_DUTY) * pos / span);
+  // CYD wiring is: 3V3 — R10 (1MΩ) — GPIO 34 — LDR — GND. Bright light
+  // drops the LDR's resistance, pulls the tap toward GND, gives a LOW
+  // raw value. Dark gives a HIGH raw value. So map low raw → max duty,
+  // high raw → min duty (i.e. the comparison polarity is inverted vs.
+  // a naive divider assumption — this caught us until v0.1.5).
+  if (raw <= BL_LDR_BRIGHT) return BL_MAX_DUTY;
+  if (raw >= BL_LDR_DARK)   return BL_MIN_DUTY;
+  uint32_t span = BL_LDR_DARK - BL_LDR_BRIGHT;
+  uint32_t pos  = raw - BL_LDR_BRIGHT;
+  return BL_MAX_DUTY - (uint8_t)((BL_MAX_DUTY - BL_MIN_DUTY) * pos / span);
 }
 
 void backlight_loop() {
