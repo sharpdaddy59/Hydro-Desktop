@@ -18,7 +18,9 @@ just shows what's true right now.
   green = fresh, yellow = sim mode, gray = stale or no data. Tap a dot
   to focus that device + pause cycling. Tap the hero pane to toggle
   pause.
-- **Long-press** opens Settings (rotation cycle for now, more later).
+- **Long-press** opens Settings — cycles backlight mode
+  (Auto / Full / Dim) on each tap. Auto follows the on-board LDR;
+  Full and Dim pin the backlight at max or min.
 - **Per-MAC unique hostname** like `hydro-dash-a3f2.local` — multiple
   CYDs on the same LAN don't collide. The hostname is shown in the
   hero footer so you can identify which physical unit you're looking at.
@@ -96,24 +98,25 @@ hydro-dash/
 ├── ui.{cpp,h}              LovyanGFX panel config + screen state machine
 ├── ui_hero.{cpp,h}         Hero view + status-dot strip
 ├── ui_detail.{cpp,h}       Per-device drilldown
-├── ui_settings.{cpp,h}     Settings screen (rotation cycle)
+├── ui_settings.{cpp,h}     Settings screen (brightness mode cycle)
 ├── touch.{cpp,h}           XPT2046 tap/long-press dispatch
 ├── wifi_setup.{cpp,h}      WiFiManager AP-mode onboarding
 ├── discovery.{cpp,h}       mDNS browse + /sensors probe
 ├── poller.{cpp,h}          HTTP polling task
 ├── http_server.{cpp,h}     Management API
 ├── build.ps1, setup.ps1    arduino-cli wrappers
-├── docs/hydro-dash-spec.md Full design + screen flow
+├── enclosure/              Parametric OpenSCAD snap-fit case + STLs
+├── docs/hydro-dash-spec.md Full design + screen flow + changelog
+├── docs/cyd-ldr-test/      Standalone LDR diagnostic sketch
 └── CLAUDE.md               Notes for Claude Code agents
 ```
 
 ## Status
 
-v0.1.2 — working end-to-end. Hero view + auto-cycle, mDNS discovery,
-unique per-device hostnames, panel config dialed in for the S028R.
-Touch calibration is still placeholder (first-press is slightly
-off-axis until the settings flow lands); see the open-work list at the
-bottom of [`docs/hydro-dash-spec.md`](docs/hydro-dash-spec.md).
+Working end-to-end on the Sunton S028R. Current version is in
+[`config.h`](config.h) (`FW_VERSION`); per-release notes and the
+open-work list live in
+[`docs/hydro-dash-spec.md`](docs/hydro-dash-spec.md).
 
 ## License
 
