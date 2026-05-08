@@ -160,9 +160,9 @@ Once parameters are dialed in:
   the smoothest layer), back shell open-side-up.
 - **Supports:** none needed.
 
-Total final print: ~3–4 hours for both halves at 0.2 mm on a typical
-200 mm/s setup. The bundled `.3mf` is profiled for the Creality
-Ender-3 V3 and prints all three parts in under an hour.
+Total final print: ~60–90 minutes for all three parts at 0.2 mm.
+The bundled `.3mf` is profiled for the Creality Ender-3 V3 and
+prints them in under an hour.
 
 ## Assembly
 
