@@ -30,7 +30,32 @@ Sunton ESP32-2432S028R "Cheap Yellow Display."
   in OpenSCAD, set `mode` at the top of the file to `"front"`,
   `"back"`, `"kickstand"`, `"assembly"`, or `"exploded"`. Render
   (F6), export STL.
-- `stl/` — gitignored. Your local renders go here.
+- `stl/` — bundled rendered parts and a Creality Ender-3 V3 slicer
+  project. See [Quick print](#quick-print) below.
+
+## Quick print
+
+If you have a stock Sunton ESP32-2432S028R and don't want to touch
+OpenSCAD, the rendered parts ship in `stl/`:
+
+| File | Re-render with |
+|------|----------------|
+| `hydro-dash-case.3mf` | (sliced project — **Creality Ender-3 V3**) |
+| `hydro-dash-back.stl` | `mode = "back"` |
+| `hydro-dash-front.stl` | `mode = "front"` |
+| `hydro-dash-kickstand.stl` | `mode = "kickstand"` |
+
+**Ender-3 V3 owners:** open `hydro-dash-case.3mf` in Creality Print,
+send to printer. All three parts in one job, **under an hour total**.
+The back shell alone takes just under 30 minutes if you'd rather
+fit-test it first before committing to the full print.
+
+**Other printers:** slice the three STLs separately or together — see
+the print settings in [Final print](#5-final-print) below.
+
+If your CYD is a clone or a different revision (S028C capacitive,
+non-standard PCB outline), skip the bundled files and re-render from
+the SCAD source — the bundled geometry is dialed in for the S028R.
 
 ## Feature toggles
 
@@ -135,7 +160,9 @@ Once parameters are dialed in:
   the smoothest layer), back shell open-side-up.
 - **Supports:** none needed.
 
-Total final print: ~3–4 hours for both halves at 0.2 mm.
+Total final print: ~3–4 hours for both halves at 0.2 mm on a typical
+200 mm/s setup. The bundled `.3mf` is profiled for the Creality
+Ender-3 V3 and prints all three parts in under an hour.
 
 ## Assembly
 
@@ -190,9 +217,9 @@ Group highlights:
 
 ## Notes
 
-- The bundled STL renders are intentionally gitignored — the SCAD
-  source is the source of truth. Re-render after any parameter
-  change.
+- The SCAD source is the source of truth. The bundled `stl/` renders
+  are convenience artifacts for the stock S028R; re-render from the
+  SCAD after any parameter change rather than hand-editing the STLs.
 - Community references (all STL-only):
   [mdkendall](https://www.printables.com/model/685845-enclosure-for-sunton-esp32-2432s028r-cheap-yellow-),
   [Michał USB-C remix](https://www.printables.com/model/744864-esp32-cheap-yellow-display-usb-c-version-enclosure),
