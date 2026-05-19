@@ -131,7 +131,44 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Recent state
 
-- **v0.1.5 (current):** Auto-dim polarity fix. The CYD's LDR is wired
+- **v0.1.8 (current):** In-place hero redraws. v0.1.7's bump-cull
+  stopped no-op redraws, but legitimate value changes (RSSI drift,
+  sub-decimal sensor noise) still triggered full clear-then-paint
+  → still visibly flashed. `draw_strip` and `draw_hero` now take a
+  `full_redraw` flag; full `fillRect(...TFT_BLACK)` only happens on
+  page transitions (focus / pause / device-count change). In-place
+  refreshes redraw text over prior glyphs via
+  `setTextColor(fg, bg)` and use a narrow per-row right-band clear
+  to handle right-aligned values that may shrink. Hostname and
+  device name skip redraw on in-place refreshes (invariant).
+- **v0.1.7:** Cull spurious hero redraws. `poll_sensors`
+  previously called `state_bump_version()` unconditionally on every
+  successful poll, so a steady-state 2-device LAN flashed every
+  ~7.5 s purely from poll cadence — independent of the 6 s
+  auto-cycle. The poller now compares each incoming field to the
+  current atomic via `set_if_changed` / `set_float_if_changed`
+  helpers (NaN-aware, so disabled-upstream sensors stay quiet) and
+  bumps only when something visible moved. `has_data` and `stale`
+  edge transitions are folded in via `atomic::exchange`. The hero's
+  own `fillRect`-then-redraw pattern wasn't touched — once spurious
+  bumps are gone, the only redraws are legitimate page transitions
+  (auto-cycle / focus change / stale-trip).
+- **v0.1.6:** Track cores3-hydro v0.7.0's `/sensors` +
+  `/status` wire format. Boolean `simulated` object → string-valued
+  `status` object (`"real"` | `"simulated"` | `"disabled"`); readings
+  may now be JSON null (mapped to NaN). `state.h` gains `SensorMode`
+  (REAL/SIMULATED/OFF, mirroring upstream) and `TempUnit`; the old
+  `sim_air/water/light` booleans on `DeviceRecord` were replaced by
+  `mode_air/water/light` (atomic uint8). Temperature unit is now
+  per-device — hero/detail screens render the C or F suffix from the
+  upstream device's current setting via `temp_unit_suffix()`. `OFF`
+  text replaces `--` on the hero screen for explicitly-disabled
+  sensors so users can tell "I turned this off" from "no data yet".
+  `/status` field rename `uptime_s` → `uptime` is accepted in addition
+  to the old name during the upgrade window. The dashboard's own
+  `/devices` JSON now emits the same shape (per-device `status`
+  object, `temperature_units`, null for missing readings).
+- **v0.1.5:** Auto-dim polarity fix. The CYD's LDR is wired
   with R10 (1MΩ) pulling GPIO 34 up to 3V3 and the LDR pulling it down
   to GND — so bright light = low raw ADC, dark = high. `backlight.cpp`
   previously had the comparison backwards, which meant the dimmer was

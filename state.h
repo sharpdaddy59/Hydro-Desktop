@@ -7,10 +7,49 @@
 #pragma once
 
 #include <atomic>
+#include <cstring>
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include "config.h"
+
+// Per-sensor mode mirrored from cores3-hydro's /sensors `status` object
+// (v0.7.0+). Integer values match the upstream enum byte-for-byte so a
+// drop-in re-use of the wire format works without translation. OFF (not
+// DISABLED) for the same reason as upstream: dodges ESP-IDF's
+// `#define DISABLED 0x00` GPIO-mode macro.
+enum class SensorMode : uint8_t {
+  REAL      = 0,
+  SIMULATED = 1,
+  OFF       = 2,
+};
+
+// Temperature unit the upstream device is currently reporting in.
+// Per-device because each cores3-hydro can be configured independently.
+enum class TempUnit : uint8_t {
+  CELSIUS    = 0,
+  FAHRENHEIT = 1,
+};
+
+inline SensorMode sensor_mode_from_str(const char* s) {
+  if (!s) return SensorMode::REAL;
+  if (strcmp(s, "simulated") == 0) return SensorMode::SIMULATED;
+  if (strcmp(s, "disabled")  == 0) return SensorMode::OFF;
+  return SensorMode::REAL;
+}
+
+inline const char* sensor_mode_label(SensorMode m) {
+  switch (m) {
+    case SensorMode::SIMULATED: return "simulated";
+    case SensorMode::OFF:       return "disabled";
+    case SensorMode::REAL:
+    default:                    return "real";
+  }
+}
+
+inline const char* temp_unit_suffix(TempUnit u) {
+  return (u == TempUnit::FAHRENHEIT) ? "F" : "C";
+}
 
 struct DeviceRecord {
   // Identity
@@ -35,10 +74,17 @@ struct DeviceRecord {
   std::atomic<uint16_t> consecutive_fails;
   std::atomic<bool>     stale;             // true once consecutive_fails >= STALE_AFTER_MISSES
 
-  // Per-sensor sim flags (mirrored from /sensors so the UI can tint).
-  std::atomic<bool> sim_air;
-  std::atomic<bool> sim_water;
-  std::atomic<bool> sim_light;
+  // Per-sensor source-of-truth mode (mirrored from /sensors `status`).
+  // Stored as uint8_t so the atomic is trivially lock-free; cast through
+  // SensorMode at use sites.
+  std::atomic<uint8_t> mode_air;
+  std::atomic<uint8_t> mode_water;
+  std::atomic<uint8_t> mode_light;
+
+  // Temperature unit the upstream device is currently emitting in (from
+  // /sensors `temperature_units`). Stored as uint8_t so the atomic is
+  // lock-free; cast to TempUnit at use sites. Defaults to CELSIUS.
+  std::atomic<uint8_t> temp_unit;
 
   // True once any data has been received successfully.
   std::atomic<bool> has_data;

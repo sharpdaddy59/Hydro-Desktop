@@ -55,8 +55,15 @@ static void handle_root() {
   s_server.send(200, "text/html", body);
 }
 
+// Emit a float as JSON null if NaN (cores3-hydro semantics: a null
+// value means "stale or sensor disabled, no meaningful reading").
+static void emit_float_or_null(JsonObject& o, const char* k, float v) {
+  if (isnan(v)) o[k] = nullptr;
+  else          o[k] = v;
+}
+
 static void handle_devices_get() {
-  StaticJsonDocument<2048> doc;
+  StaticJsonDocument<3072> doc;
   JsonArray arr = doc.to<JsonArray>();
   uint8_t n = g_device_count.load();
   for (uint8_t i = 0; i < n; i++) {
@@ -65,14 +72,21 @@ static void handle_devices_get() {
     o["hostname"]   = d.hostname;
     o["alias"]      = prefs_alias_for(d.hostname);
     o["ip"]         = d.last_ip.toString();
-    o["water_temp"] = d.water_temp.load();
-    o["air_temp"]   = d.air_temp.load();
-    o["humidity"]   = d.humidity.load();
-    o["light"]      = d.light.load();
+    emit_float_or_null(o, "water_temp", d.water_temp.load());
+    emit_float_or_null(o, "air_temp",   d.air_temp.load());
+    emit_float_or_null(o, "humidity",   d.humidity.load());
+    emit_float_or_null(o, "light",      d.light.load());
+    o["temperature_units"] =
+        ((TempUnit)d.temp_unit.load() == TempUnit::FAHRENHEIT)
+            ? "fahrenheit" : "celsius";
     o["rssi"]       = d.rssi.load();
     o["uptime_s"]   = d.uptime_s.load();
     o["stale"]      = (bool)d.stale.load();
     o["fails"]      = d.consecutive_fails.load();
+    JsonObject status = o.createNestedObject("status");
+    status["air"]   = sensor_mode_label((SensorMode)d.mode_air.load());
+    status["water"] = sensor_mode_label((SensorMode)d.mode_water.load());
+    status["light"] = sensor_mode_label((SensorMode)d.mode_light.load());
   }
   send_json(200, doc);
 }

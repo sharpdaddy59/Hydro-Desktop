@@ -27,14 +27,23 @@ void ui_detail_draw() {
   auto line = [&](const char* fmt, auto v) {
     g.setCursor(8, FY(y, 8)); g.printf(fmt, v); y += 14;
   };
-  line("Water temp: %.2f C",   d.water_temp.load());
-  line("Air temp:   %.2f C",   d.air_temp.load());
+  const char* tsuf = temp_unit_suffix((TempUnit)d.temp_unit.load());
+  g.setCursor(8, FY(y, 8));
+  g.printf("Water temp: %.2f %s", d.water_temp.load(), tsuf); y += 14;
+  g.setCursor(8, FY(y, 8));
+  g.printf("Air temp:   %.2f %s", d.air_temp.load(), tsuf);   y += 14;
   line("Humidity:   %.0f %%",  d.humidity.load());
   line("Light:      %.0f",     d.light.load());
   line("RSSI:       %d dBm",   d.rssi.load());
   line("Battery:    %d %%",    d.battery_pct.load());
   line("Uptime:     %u s",     d.uptime_s.load());
   line("Misses:     %u",       (unsigned)d.consecutive_fails.load());
+  g.setCursor(8, FY(y, 8));
+  g.printf("Sensors:    A:%s W:%s L:%s",
+           sensor_mode_label((SensorMode)d.mode_air.load()),
+           sensor_mode_label((SensorMode)d.mode_water.load()),
+           sensor_mode_label((SensorMode)d.mode_light.load()));
+  y += 14;
 
   g.setTextColor(TFT_DARKGREY, TFT_BLACK);
   g.setCursor(8, FY(g.height() - 16, 8));

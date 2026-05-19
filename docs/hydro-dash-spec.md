@@ -9,6 +9,60 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.8:** In-place hero redraws. After v0.1.7 culled spurious
+  version bumps, the dashboard still flashed on legitimate value
+  changes — RSSI drift ±1-2 dBm per poll, sub-decimal sensor
+  movement — because every redraw began with a 320×210 fillRect to
+  black before repainting. `draw_strip` and `draw_hero` now take a
+  `full_redraw` flag computed in `ui_hero_draw` from focus / pause /
+  device-count change. On a page transition (focused device
+  advances, user taps to pause, a device appears or disappears) the
+  full clear-and-repaint still happens — that's the page-change
+  flash the user accepts. On any other version bump the renderer
+  redraws each element in place: `setTextColor(fg, bg)` overwrites
+  prior glyphs cleanly, and a narrow per-row right-band clear
+  handles right-aligned values that may shrink in width
+  (e.g. `100.5C` → `9.5C`). The hostname and device name skip
+  redraw entirely on in-place refreshes since they're invariant for
+  the focused device. Net effect: live values update silently
+  between cycle transitions, matching the architectural model of "a
+  display task reading atomic state, redrawing the same page until
+  it's time to advance."
+- **v0.1.7:** Cull spurious hero redraws. `poll_sensors` previously
+  bumped `g_state_version` unconditionally on every successful poll,
+  so a stable 2-device LAN flashed every ~7.5 s (POLL_INTERVAL_MS /
+  N_devices) between the legitimate 6 s auto-cycle transitions —
+  visible because `draw_hero` clears the 320×210 hero region to
+  black before repainting, with no off-screen sprite. The poller now
+  compares each incoming field to the current atomic value via small
+  `set_*_if_changed` helpers and bumps the UI version only if
+  anything visible moved. NaN→NaN is treated as no-change so a
+  disabled-upstream sensor (value is null every poll) doesn't
+  oscillate. The `has_data` and `stale` transitions are folded into
+  the same `changed` flag via `atomic::exchange`. Bookkeeping fields
+  that don't drive rendering (`last_ok_ms`, `consecutive_fails`)
+  intentionally do not contribute. No change to the auto-cycle
+  bump, the stale-trip bump, or the screen-change full clear —
+  those are legitimate redraws and stay.
+- **v0.1.6:** Track cores3-hydro v0.7.0's `/sensors` and `/status` wire
+  format. The boolean `simulated` object is gone — replaced by a `status`
+  object whose values are per-sensor strings: `"real"`, `"simulated"`,
+  or `"disabled"`. Per-reading values may now be JSON null (stale-on-
+  upstream or sensor explicitly disabled); the poller maps null to NaN
+  so the hero/detail screens render `--` as before. New
+  `temperature_units` field (`"celsius"` or `"fahrenheit"`) is tracked
+  per-device and surfaced as the C/F suffix in both screens, so each
+  cores3-hydro can be configured independently and the dashboard
+  follows. `state.h` gains `SensorMode` (REAL/SIMULATED/OFF, mirroring
+  upstream's enum) and `TempUnit`; `sim_air/water/light` booleans were
+  replaced by `mode_air/water/light` (atomic uint8). Hero rendering now
+  shows `OFF` for disabled sensors in dim grey rather than the
+  ambiguous `--`. `/status` field rename `uptime_s` → `uptime` is
+  accepted in addition to the old name so a half-upgraded LAN keeps
+  working until every cores3-hydro is on v0.7.0. The dashboard's own
+  management `/devices` JSON gains a per-device `status` object plus
+  `temperature_units` and emits JSON null for missing readings, so
+  downstream consumers see the same shape as cores3-hydro.
 - **v0.1.5:** Auto-dim polarity fix. The CYD's LDR is wired with the
   pull-up high (R10 1MΩ to 3V3, LDR to GND, GPIO 34 between them), so
   bright light produces a LOW raw ADC value and dark produces a HIGH
@@ -167,7 +221,10 @@ GRID --long press-->   SETTINGS --tap--> GRID
 ```
 
 - **GRID:** 2×2 tiles. Each: alias-or-hostname, water/air/humidity/light,
-  status dot (green = fresh, gray = stale, yellow = any sim flag set).
+  status dot (green = fresh + all sensors REAL, gray = stale, yellow =
+  any sensor in SIMULATED mode upstream). A sensor in the OFF/disabled
+  mode is treated as a healthy state for the dot — the user explicitly
+  turned it off — and the per-row reading renders `OFF` in dim grey.
 - **DETAIL:** all readings + uptime, RSSI, battery, FW version, IP,
   failure count.
 - **SETTINGS** (stub): brightness mode toggle, screen rotation, re-scan

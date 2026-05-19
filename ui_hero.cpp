@@ -27,12 +27,30 @@ static int8_t   s_focused        = 0;
 static bool     s_paused         = false;
 static uint32_t s_last_cycle_ms  = 0;
 
+// Snapshot of the screen-state inputs that determine whether the last
+// rendered frame is "the same page" or "a new page." Initialised to
+// sentinels that force a full first-frame draw. Updated by
+// ui_hero_draw() AFTER drawing — until then `full_redraw` compares the
+// live values against these. See the comment block in ui_hero_draw()
+// for why we redraw in place between page transitions instead of
+// re-clearing the whole region every time.
+static int8_t s_last_drawn_focused = -1;
+static int8_t s_last_drawn_paused  = -1;
+static int8_t s_last_drawn_count   = -1;
+
 // uint16_t (not uint32_t) so LovyanGFX's color path treats values as
 // RGB565. With uint32_t the converter dispatches to its RGB888
 // overload and the bytes get reinterpreted (TFT_GREEN ends up red).
 static uint16_t status_color(const DeviceRecord& d) {
-  if (!d.has_data.load() || d.stale.load())                      return 0x4208;       // dim gray
-  if (d.sim_air.load() || d.sim_water.load() || d.sim_light.load()) return TFT_YELLOW;
+  if (!d.has_data.load() || d.stale.load()) return 0x4208;       // dim gray
+  // Any sensor in SIMULATED → yellow. OFF (disabled) is treated as a
+  // healthy state — the user explicitly turned the sensor off, so it
+  // shouldn't drag the whole device down to yellow.
+  SensorMode a = (SensorMode)d.mode_air.load();
+  SensorMode w = (SensorMode)d.mode_water.load();
+  SensorMode l = (SensorMode)d.mode_light.load();
+  if (a == SensorMode::SIMULATED || w == SensorMode::SIMULATED ||
+      l == SensorMode::SIMULATED) return TFT_YELLOW;
   return TFT_GREEN;
 }
 
@@ -42,21 +60,28 @@ static void advance_focus() {
   s_focused = (s_focused + 1) % n;
 }
 
-static void draw_strip() {
+static void draw_strip(bool full_redraw) {
   auto& g = ui_gfx();
   int W = g.width();
   uint8_t n = g_device_count.load();
 
-  // Clear the strip (covers stale "PAUSED" / changing dot positions).
+  // Full clear only on a page transition (focus/pause/count change).
+  // On in-place updates the dots overwrite their prior pixels via
+  // fillCircle; the PAUSED text can't have changed (pause is part of
+  // the full_redraw trigger) so it remains correct on the framebuffer.
   // All Y values via FY() since the canvas Y axis is inverted.
-  g.fillRect(0, FY(0, STRIP_H), W, STRIP_H, TFT_BLACK);
-  g.drawFastHLine(0, FY(STRIP_H - 1), W, 0x4208);
+  if (full_redraw) {
+    g.fillRect(0, FY(0, STRIP_H), W, STRIP_H, TFT_BLACK);
+    g.drawFastHLine(0, FY(STRIP_H - 1), W, 0x4208);
+  }
 
   if (n == 0) {
-    g.setTextSize(1);
-    g.setTextColor(TFT_DARKGREY, TFT_BLACK);
-    g.setCursor(8, FY(10, 8));      // size-1 font ~ 8px tall
-    g.print("waiting for devices...");
+    if (full_redraw) {
+      g.setTextSize(1);
+      g.setTextColor(TFT_DARKGREY, TFT_BLACK);
+      g.setCursor(8, FY(10, 8));      // size-1 font ~ 8px tall
+      g.print("waiting for devices...");
+    }
     return;
   }
 
@@ -70,7 +95,7 @@ static void draw_strip() {
     if (i == s_focused) g.drawCircle(cx, cy, radius + 2, TFT_WHITE);
   }
 
-  if (s_paused) {
+  if (full_redraw && s_paused) {
     g.setTextSize(1);
     g.setTextColor(TFT_YELLOW, TFT_BLACK);
     g.setCursor(W - 56, FY(4, 8));
@@ -78,30 +103,41 @@ static void draw_strip() {
   }
 }
 
-static void draw_hero() {
+static void draw_hero(bool full_redraw) {
   auto& g = ui_gfx();
   int W = g.width();
   int H = g.height();
   uint8_t n = g_device_count.load();
 
-  // Clear the hero region (logical y=STRIP_H..H, height H-STRIP_H).
-  g.fillRect(0, FY(STRIP_H, H - STRIP_H), W, H - STRIP_H, TFT_BLACK);
+  // Full clear only on a page transition (focus / pause / count
+  // change). In-place updates redraw each element over its prior
+  // pixels via setTextColor(fg, bg) — the bg fills each glyph's
+  // bounding box, overwriting the prior glyph without a black flash.
+  // Variable-width right-aligned values (e.g. "100.5C" → "9.5C") get
+  // a narrow per-row right-band clear inline below.
+  if (full_redraw) {
+    g.fillRect(0, FY(STRIP_H, H - STRIP_H), W, H - STRIP_H, TFT_BLACK);
+  }
 
   if (n == 0) return;
   if (s_focused >= n) s_focused = 0;
   const DeviceRecord& d = g_devices[s_focused];
 
-  // Name (alias falls back to hostname). Size 3 to match the readings.
+  // Name (alias falls back to hostname). Only drawn on full_redraw —
+  // outside a page transition, the name is invariant for the focused
+  // device, so it's already on the framebuffer from the prior frame.
   // setTextWrap(false) keeps long names on one line (truncated at the
   // right edge) rather than wrapping into the readings region below.
-  g.setTextColor(TFT_WHITE, TFT_BLACK);
-  g.setTextSize(3);
-  g.setTextWrap(false);
-  const int NAME_H = 24;
-  g.setCursor(8, FY(HERO_NAME_Y, NAME_H));
-  const char* alias = prefs_alias_for(d.hostname);
-  g.print(*alias ? alias : d.hostname);
-  g.setTextWrap(true);
+  if (full_redraw) {
+    g.setTextColor(TFT_WHITE, TFT_BLACK);
+    g.setTextSize(3);
+    g.setTextWrap(false);
+    const int NAME_H = 24;
+    g.setCursor(8, FY(HERO_NAME_Y, NAME_H));
+    const char* alias = prefs_alias_for(d.hostname);
+    g.print(*alias ? alias : d.hostname);
+    g.setTextWrap(true);
+  }
 
   // Readings — text size 3. Label left-aligned at x=8; value right-
   // aligned to the panel's right edge. Each row's color reflects its
@@ -110,36 +146,56 @@ static void draw_hero() {
   //   yellow = fresh, but this sensor is in sim mode upstream
   //   gray   = device is stale (overrides per-sensor sim state)
   g.setTextSize(3);
-  const int LINE_H = 24;
+  const int LINE_H        = 24;
+  // Wide enough for any plausible value at size 3 — "888.8 F" is ~96 px
+  // and we want headroom; 140 px also covers the few-pixel kerning
+  // wobble between digits.
+  const int VALUE_BAND_W  = 140;
   bool stale = d.stale.load();
+  const char* tsuf = temp_unit_suffix((TempUnit)d.temp_unit.load());
 
   auto reading = [&](int line, const char* label, float v, const char* unit,
-                     bool simulated) {
+                     SensorMode mode) {
     int y = HERO_LINE0_Y + line * HERO_LINE_DY;
+    bool disabled  = (mode == SensorMode::OFF);
+    bool simulated = (mode == SensorMode::SIMULATED);
     // uint16_t (not uint32_t!) so LovyanGFX treats the value as
     // RGB565. With uint32_t it dispatches to the RGB888 overload and
     // the bytes get reinterpreted, which is why TFT_GREEN was coming
     // out red.
-    uint16_t color = stale     ? 0x7BEF
-                   : simulated ? TFT_YELLOW
-                   :             TFT_GREEN;
+    uint16_t color = (stale || disabled) ? 0x7BEF
+                   : simulated           ? TFT_YELLOW
+                   :                       TFT_GREEN;
+
+    // In-place redraws: clear the right-aligned value band so a value
+    // that shrunk in width doesn't leave leading character pixels
+    // behind. On full_redraw the whole region is already black.
+    if (!full_redraw) {
+      g.fillRect(W - RIGHT_PAD - VALUE_BAND_W, FY(y, LINE_H),
+                 VALUE_BAND_W, LINE_H, (uint16_t)TFT_BLACK);
+    }
+
     g.setTextColor(color, (uint16_t)TFT_BLACK);
     g.setCursor(8, FY(y, LINE_H));
     g.print(label);
 
     char buf[16];
-    if (isnan(v))                     snprintf(buf, sizeof(buf), "--");
+    if (disabled)                     snprintf(buf, sizeof(buf), "OFF");
+    else if (isnan(v))                snprintf(buf, sizeof(buf), "--");
     else if (strcmp(unit, "%") == 0)  snprintf(buf, sizeof(buf), "%.0f%s", v, unit);
     else                              snprintf(buf, sizeof(buf), "%.1f%s", v, unit);
     int tw = g.textWidth(buf);
     g.setCursor(W - RIGHT_PAD - tw, FY(y, LINE_H));
     g.print(buf);
   };
-  // Air and Humidity share sim_air — same DHT20 sensor on the hydro side.
-  reading(0, "Water",    d.water_temp.load(), "C", d.sim_water.load());
-  reading(1, "Air",      d.air_temp.load(),   "C", d.sim_air.load());
-  reading(2, "Humidity", d.humidity.load(),   "%", d.sim_air.load());
-  reading(3, "Light",    d.light.load(),      "",  d.sim_light.load());
+  // Air and Humidity share mode_air — same DHT20 sensor on the hydro side.
+  SensorMode m_air   = (SensorMode)d.mode_air.load();
+  SensorMode m_water = (SensorMode)d.mode_water.load();
+  SensorMode m_light = (SensorMode)d.mode_light.load();
+  reading(0, "Water",    d.water_temp.load(), tsuf, m_water);
+  reading(1, "Air",      d.air_temp.load(),   tsuf, m_air);
+  reading(2, "Humidity", d.humidity.load(),   "%",  m_air);
+  reading(3, "Light",    d.light.load(),      "",   m_light);
 
   // Footer: status details up top, hostname on its own line at the
   // bottom (size 2 so it's legible from desk distance) — multiple CYDs
@@ -148,16 +204,27 @@ static void draw_hero() {
   int hostname_y = H - FOOTER_LINE_H - 4;
   int status_y   = hostname_y - FOOTER_LINE_H - 2;
 
+  // Status line ("1/2   RSSI -50") width varies with RSSI digits and
+  // the X/N device index — clear the row band before redrawing on
+  // in-place updates.
+  if (!full_redraw) {
+    g.fillRect(0, FY(status_y, FOOTER_LINE_H), W, FOOTER_LINE_H,
+               (uint16_t)TFT_BLACK);
+  }
   g.setTextSize(2);
   g.setTextColor(TFT_DARKGREY, TFT_BLACK);
   g.setCursor(8, FY(status_y, FOOTER_LINE_H));
   g.printf("%u/%u   RSSI %d", (unsigned)(s_focused + 1), (unsigned)n,
            d.rssi.load());
 
-  g.setTextSize(2);
-  g.setTextColor(TFT_WHITE, TFT_BLACK);
-  g.setCursor(8, FY(hostname_y, FOOTER_LINE_H));
-  g.print(device_hostname());
+  // Hostname is this dashboard's own per-MAC name — invariant after
+  // boot. Only redraw on full_redraw (when the clear erased it).
+  if (full_redraw) {
+    g.setTextSize(2);
+    g.setTextColor(TFT_WHITE, TFT_BLACK);
+    g.setCursor(8, FY(hostname_y, FOOTER_LINE_H));
+    g.print(device_hostname());
+  }
 }
 
 void ui_hero_tick() {
@@ -170,8 +237,22 @@ void ui_hero_tick() {
 }
 
 void ui_hero_draw() {
-  draw_strip();
-  draw_hero();
+  // A "page transition" is any change in which device is shown, the
+  // pause state (the PAUSED text appears/disappears), or the device
+  // count (dot layout / "waiting" text). Anything else — RSSI drift,
+  // sensor decimal-place changes, sim-mode toggles upstream — is an
+  // in-place refresh that should be visually silent.
+  int8_t now_count = (int8_t)g_device_count.load();
+  bool full_redraw = (s_focused          != s_last_drawn_focused) ||
+                     ((int8_t)s_paused   != s_last_drawn_paused)  ||
+                     (now_count          != s_last_drawn_count);
+
+  draw_strip(full_redraw);
+  draw_hero(full_redraw);
+
+  s_last_drawn_focused = s_focused;
+  s_last_drawn_paused  = (int8_t)s_paused;
+  s_last_drawn_count   = now_count;
 }
 
 void ui_hero_handle_touch(int16_t x, int16_t y) {

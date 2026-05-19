@@ -28,9 +28,10 @@ void state_init() {
     d.last_ok_ms.store(0);
     d.consecutive_fails.store(0);
     d.stale.store(true);
-    d.sim_air.store(false);
-    d.sim_water.store(false);
-    d.sim_light.store(false);
+    d.mode_air.store((uint8_t)SensorMode::REAL);
+    d.mode_water.store((uint8_t)SensorMode::REAL);
+    d.mode_light.store((uint8_t)SensorMode::REAL);
+    d.temp_unit.store((uint8_t)TempUnit::CELSIUS);
     d.has_data.store(false);
   }
 }

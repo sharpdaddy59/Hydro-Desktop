@@ -18,6 +18,38 @@ static String url_for(const DeviceRecord& d, const char* path) {
   return String("http://") + d.hostname + ".local" + path;
 }
 
+// Read a numeric field that may be JSON null (cores3-hydro emits null
+// when a reading is stale or the sensor is disabled). Maps null/missing
+// to NaN so the UI's existing isnan() branch renders "--".
+static float json_float_or_nan(JsonVariantConst v) {
+  if (v.isNull()) return NAN;
+  return v.as<float>();
+}
+
+// Store v into dst only if it differs from the current value. Returns
+// true iff a write happened — callers OR this into a `changed` flag and
+// only bump the UI version when something visible actually moved.
+// Without this, a poll that returned identical readings still triggered
+// a full hero redraw (POLL_INTERVAL_MS / N_devices apart), which the
+// user saw as a periodic flash between cycle transitions.
+template <typename T>
+static bool set_if_changed(std::atomic<T>& dst, T v) {
+  T old = dst.load();
+  if (old == v) return false;
+  dst.store(v);
+  return true;
+}
+
+// NaN-aware float variant: treat NaN→NaN as no-change. Without this a
+// disabled-upstream sensor (value is null → NaN every poll) would
+// register as a change on every comparison since NaN != NaN per IEEE 754.
+static bool set_float_if_changed(std::atomic<float>& dst, float v) {
+  float old = dst.load();
+  if ((isnan(old) && isnan(v)) || old == v) return false;
+  dst.store(v);
+  return true;
+}
+
 static bool poll_sensors(DeviceRecord& d) {
   HTTPClient http;
   http.setTimeout(HTTP_TIMEOUT_MS);
@@ -30,24 +62,58 @@ static bool poll_sensors(DeviceRecord& d) {
   http.end();
   if (err) return false;
 
-  if (doc.containsKey("water_temp")) d.water_temp.store(doc["water_temp"].as<float>());
-  if (doc.containsKey("air_temp"))   d.air_temp.store(doc["air_temp"].as<float>());
-  if (doc.containsKey("humidity"))   d.humidity.store(doc["humidity"].as<float>());
-  if (doc.containsKey("light"))      d.light.store(doc["light"].as<float>());
-  if (doc.containsKey("rssi"))       d.rssi.store(doc["rssi"].as<int>());
+  // Track whether any displayed field actually changed. The UI version
+  // is bumped only when something visible moved, so a poll that yielded
+  // identical readings no longer triggers a redraw between the 6 s
+  // auto-cycle transitions.
+  bool changed = false;
 
-  if (doc.containsKey("simulated")) {
-    JsonObject sim = doc["simulated"];
-    d.sim_air.store(sim["air"]   | false);
-    d.sim_water.store(sim["water"] | false);
-    d.sim_light.store(sim["light"] | false);
+  // Per-reading null is the v0.7.0+ contract for "stale or disabled".
+  // Map to NaN so the UI's existing isnan() rendering still works.
+  changed |= set_float_if_changed(d.water_temp, json_float_or_nan(doc["water_temp"]));
+  changed |= set_float_if_changed(d.air_temp,   json_float_or_nan(doc["air_temp"]));
+  changed |= set_float_if_changed(d.humidity,   json_float_or_nan(doc["humidity"]));
+  changed |= set_float_if_changed(d.light,      json_float_or_nan(doc["light"]));
+  if (doc.containsKey("rssi")) {
+    changed |= set_if_changed(d.rssi, doc["rssi"].as<int>());
   }
 
+  // Temperature unit. Upstream emits "celsius" or "fahrenheit"; absent
+  // field defaults to celsius (the legacy assumption).
+  {
+    const char* tu = doc["temperature_units"] | "celsius";
+    uint8_t new_unit = (uint8_t)(strcmp(tu, "fahrenheit") == 0
+                                   ? TempUnit::FAHRENHEIT
+                                   : TempUnit::CELSIUS);
+    changed |= set_if_changed(d.temp_unit, new_unit);
+  }
+
+  // Per-sensor mode object. Replaced the pre-v0.7.0 boolean `simulated`
+  // object — values are "real" | "simulated" | "disabled" strings.
+  if (doc.containsKey("status")) {
+    JsonObjectConst st = doc["status"].as<JsonObjectConst>();
+    changed |= set_if_changed(d.mode_air,
+                              (uint8_t)sensor_mode_from_str(st["air"]   | (const char*)nullptr));
+    changed |= set_if_changed(d.mode_water,
+                              (uint8_t)sensor_mode_from_str(st["water"] | (const char*)nullptr));
+    changed |= set_if_changed(d.mode_light,
+                              (uint8_t)sensor_mode_from_str(st["light"] | (const char*)nullptr));
+  }
+
+  // Visual transitions that the strip-dot colour depends on: first-ever
+  // successful poll (has_data 0→1), and stale-recovery (stale 1→0).
+  // exchange() returns the previous value so we can detect the edge in
+  // a single atomic op.
+  if (!d.has_data.exchange(true)) changed = true;
+  if (d.stale.exchange(false))    changed = true;
+
+  // Bookkeeping fields that don't drive the hero render — these update
+  // every poll regardless and intentionally do NOT contribute to
+  // `changed`.
   d.last_ok_ms.store(millis());
   d.consecutive_fails.store(0);
-  d.stale.store(false);
-  d.has_data.store(true);
-  state_bump_version();
+
+  if (changed) state_bump_version();
   return true;
 }
 
@@ -62,7 +128,11 @@ static bool poll_status(DeviceRecord& d) {
   if (deserializeJson(doc, http.getStream())) { http.end(); return false; }
   http.end();
 
-  if (doc.containsKey("uptime_s"))    d.uptime_s.store(doc["uptime_s"].as<uint32_t>());
+  // Upstream renamed `uptime_s` → `uptime` in v0.7.0; field-name only,
+  // still seconds. Accept either so a mixed-version LAN keeps working
+  // until every cores3-hydro is upgraded.
+  if (doc.containsKey("uptime"))      d.uptime_s.store(doc["uptime"].as<uint32_t>());
+  else if (doc.containsKey("uptime_s")) d.uptime_s.store(doc["uptime_s"].as<uint32_t>());
   if (doc.containsKey("battery_pct")) d.battery_pct.store(doc["battery_pct"].as<int>());
   if (doc.containsKey("fw_version")) {
     const char* v = doc["fw_version"];
