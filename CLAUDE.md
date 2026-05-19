@@ -98,8 +98,9 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Conventions for new work
 
-- **New screen:** add `ui_<name>.{cpp,h}` mirroring `ui_grid` /
-  `ui_detail`. Wire in via `ui.cpp`'s `ui_loop` switch and `ui_set_screen`.
+- **New screen:** add `ui_<name>.{cpp,h}` mirroring `ui_hero` /
+  `ui_settings`. Wire in via `ui.cpp`'s `ui_loop` switch and
+  `ui_set_screen`.
 - **New polled field from cores3-hydro:** add an atomic to
   `DeviceRecord` in `state.h`, parse it in `poller.cpp::poll_sensors`
   or `poll_status`, render it where appropriate. **Don't break the
@@ -131,7 +132,20 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Recent state
 
-- **v0.1.8 (current):** In-place hero redraws. v0.1.7's bump-cull
+- **v0.1.9 (current):** Reclaim flash via partition swap. v0.1.8
+  was at 99% of the default partition's 1.31 MB app slot. Build now
+  passes `--board-options PartitionScheme=min_spiffs` to
+  `arduino-cli` in `build.ps1` and the release workflow, promoting
+  the app to 1.9 MB (~600 KB headroom for the planned device-side
+  config UI). OTA layout preserved. NVS offset is identical across
+  standard schemes, so saved credentials survive the swap. Also
+  deleted `ui_detail.cpp/.h` and the `UI_SCREEN_DETAIL` enumerator
+  — unreachable since the v0.1.1 hero-view rewrite. **The build's
+  partition scheme is now part of the build contract** — when
+  flashing manually with `arduino-cli upload`, pass
+  `--board-options PartitionScheme=min_spiffs` or `build.ps1` will
+  fail to find the output binary.
+- **v0.1.8:** In-place hero redraws. v0.1.7's bump-cull
   stopped no-op redraws, but legitimate value changes (RSSI drift,
   sub-decimal sensor noise) still triggered full clear-then-paint
   → still visibly flashed. `draw_strip` and `draw_hero` now take a

@@ -9,6 +9,21 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.9:** Reclaim flash for future feature growth. v0.1.8 ran at
+  99% of the default partition's 1.31 MB app slot, with no room for
+  the planned device-side configuration UI. The build now passes
+  `--board-options PartitionScheme=min_spiffs` to `arduino-cli` in
+  both `build.ps1` and the GitHub Actions release workflow,
+  promoting the app partition to 1.9 MB (~600 KB headroom). OTA
+  support is retained even though no OTA code is in use today — the
+  scheme keeps both `app0` and `app1` partitions so a future OTA
+  path is possible without another partition migration. NVS lives
+  at `0x9000` in every standard arduino-esp32 scheme, so saved WiFi
+  credentials, brightness mode, aliases, and manual hosts survive
+  the swap without a factory reset. Also deleted `ui_detail.cpp/.h`
+  and the `UI_SCREEN_DETAIL` enumerator — the per-device drilldown
+  screen has been unreachable since the v0.1.1 hero-view rewrite
+  (no code path set it as the active screen).
 - **v0.1.8:** In-place hero redraws. After v0.1.7 culled spurious
   version bumps, the dashboard still flashed on legitimate value
   changes — RSSI drift ±1-2 dBm per poll, sub-decimal sensor

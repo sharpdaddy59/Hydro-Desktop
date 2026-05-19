@@ -44,8 +44,11 @@ jobs:
       - name: Compile
         working-directory: hydro-dash
         run: |
+          # Match build.ps1: PartitionScheme=min_spiffs gives a 1.9 MB
+          # app partition, required as of v0.1.9.
           arduino-cli compile \
             --fqbn esp32:esp32:esp32 \
+            --board-options PartitionScheme=min_spiffs \
             --warnings default \
             --export-binaries \
             .
@@ -54,7 +57,9 @@ jobs:
         working-directory: hydro-dash
         run: |
           set -euo pipefail
-          BIN_DIR="build/esp32.esp32.esp32"
+          # arduino-cli appends sanitised board-option key=value pairs to
+          # the build subdir name.
+          BIN_DIR="build/esp32.esp32.esp32_PartitionScheme_min_spiffs"
           TAG="${GITHUB_REF_NAME}"
           mkdir -p dist
           cp "$BIN_DIR/hydro-dash.ino.bin" "dist/hydro-dash-${TAG}.bin"

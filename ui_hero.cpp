@@ -1,6 +1,5 @@
 #include "ui_hero.h"
 #include "ui.h"
-#include "ui_detail.h"
 #include "state.h"
 #include "config.h"
 #include "prefs.h"

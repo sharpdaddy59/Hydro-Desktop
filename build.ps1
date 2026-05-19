@@ -30,6 +30,15 @@ param(
 #   esp32:esp32:esp32:PSRAM=enabled
 $Fqbn = "esp32:esp32:esp32"
 
+# PartitionScheme=min_spiffs gives a 1.9 MB app partition (vs the
+# default scheme's 1.31 MB) by shrinking an unused SPIFFS partition.
+# OTA support is preserved. Required as of v0.1.9 — the default
+# scheme had the app at 99% utilisation and no headroom for new
+# features. Must be passed to both `compile` and `upload` so they
+# agree on the build output path.
+$PartitionScheme = "min_spiffs"
+$BoardOpts       = "PartitionScheme=$PartitionScheme"
+
 function Find-SketchDir {
     foreach ($c in @($PWD.Path, $PSScriptRoot) | Select-Object -Unique) {
         $leaf = Split-Path -Leaf $c
@@ -49,6 +58,7 @@ Write-Host "[build] Compiling (FQBN: $Fqbn, warnings=$warn)"
 $compileArgs = @(
     "compile"
     "--fqbn"; $Fqbn
+    "--board-options"; $BoardOpts
     "--warnings"; $warn
     "--export-binaries"
     $SketchDir
@@ -56,8 +66,13 @@ $compileArgs = @(
 & arduino-cli @compileArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-$binDir  = Join-Path $SketchDir "build\$($Fqbn -replace ':', '.')"
-$binPath = Join-Path $binDir "$(Split-Path -Leaf $SketchDir).ino.bin"
+# arduino-cli appends sanitised board-option key=value pairs to the
+# build subdirectory name, so the .bin lands in a path like
+# `build/esp32.esp32.esp32_PartitionScheme_min_spiffs/`. Mirror that
+# convention so the post-compile size-report still finds the artifact.
+$binDirName = "$($Fqbn -replace ':', '.')_$($BoardOpts -replace '=', '_')"
+$binDir     = Join-Path $SketchDir "build\$binDirName"
+$binPath    = Join-Path $binDir "$(Split-Path -Leaf $SketchDir).ino.bin"
 if (Test-Path $binPath) {
     Write-Host "[build] Firmware .bin: $binPath"
 }
@@ -116,7 +131,9 @@ if (-not $Port) {
 }
 
 Write-Host "[build] Uploading to $Port..."
-arduino-cli upload -p $Port --fqbn $Fqbn $SketchDir
+# Pass the same board options so the upload step picks up the binary
+# from the partition-scheme-suffixed build subdirectory.
+arduino-cli upload -p $Port --fqbn $Fqbn --board-options $BoardOpts $SketchDir
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 if ($Monitor) {

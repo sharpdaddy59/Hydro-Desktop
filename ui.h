@@ -10,7 +10,6 @@
 
 enum UiScreen : uint8_t {
   UI_SCREEN_HERO = 0,
-  UI_SCREEN_DETAIL,
   UI_SCREEN_SETTINGS,
 };
 

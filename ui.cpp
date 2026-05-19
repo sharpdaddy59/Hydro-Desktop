@@ -8,7 +8,6 @@
 #define LGFX_USE_V1
 #include "ui.h"
 #include "ui_hero.h"
-#include "ui_detail.h"
 #include "ui_settings.h"
 #include "state.h"
 #include "config.h"
@@ -130,7 +129,6 @@ void ui_loop() {
 
   switch (s_screen) {
     case UI_SCREEN_HERO:     ui_hero_draw();     break;
-    case UI_SCREEN_DETAIL:   ui_detail_draw();   break;
     case UI_SCREEN_SETTINGS: ui_settings_draw(); break;
   }
 
@@ -144,7 +142,6 @@ void ui_loop() {
 void ui_handle_touch(int16_t x, int16_t y) {
   switch (s_screen) {
     case UI_SCREEN_HERO:     ui_hero_handle_touch(x, y);     break;
-    case UI_SCREEN_DETAIL:   ui_detail_handle_touch(x, y);   break;
     case UI_SCREEN_SETTINGS: ui_settings_handle_touch(x, y); break;
   }
 }

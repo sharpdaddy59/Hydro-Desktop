@@ -97,7 +97,6 @@ hydro-dash/
 ├── backlight.{cpp,h}       LDR-driven PWM auto-dim
 ├── ui.{cpp,h}              LovyanGFX panel config + screen state machine
 ├── ui_hero.{cpp,h}         Hero view + status-dot strip
-├── ui_detail.{cpp,h}       Per-device drilldown
 ├── ui_settings.{cpp,h}     Settings screen (brightness mode cycle)
 ├── touch.{cpp,h}           XPT2046 tap/long-press dispatch
 ├── wifi_setup.{cpp,h}      WiFiManager AP-mode onboarding
