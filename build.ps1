@@ -66,14 +66,14 @@ $compileArgs = @(
 & arduino-cli @compileArgs
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-# arduino-cli appends sanitised board-option key=value pairs to the
-# build subdirectory name, so the .bin lands in a path like
-# `build/esp32.esp32.esp32_PartitionScheme_min_spiffs/`. Mirror that
-# convention so the post-compile size-report still finds the artifact.
-$binDirName = "$($Fqbn -replace ':', '.')_$($BoardOpts -replace '=', '_')"
-$binDir     = Join-Path $SketchDir "build\$binDirName"
-$binPath    = Join-Path $binDir "$(Split-Path -Leaf $SketchDir).ino.bin"
-if (Test-Path $binPath) {
+# arduino-cli's --export-binaries drops artifacts in a board-option-
+# suffixed subdirectory of build/ whose exact name is version- and
+# option-dependent. Locate the .bin rather than reconstructing the path.
+$binPath = Get-ChildItem -Path (Join-Path $SketchDir "build") -Recurse `
+               -Filter "$(Split-Path -Leaf $SketchDir).ino.bin" `
+               -ErrorAction SilentlyContinue |
+           Select-Object -First 1 -ExpandProperty FullName
+if ($binPath) {
     Write-Host "[build] Firmware .bin: $binPath"
 }
 

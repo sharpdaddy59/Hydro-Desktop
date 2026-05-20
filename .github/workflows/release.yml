@@ -57,13 +57,20 @@ jobs:
         working-directory: hydro-dash
         run: |
           set -euo pipefail
-          # arduino-cli appends sanitised board-option key=value pairs to
-          # the build subdir name.
-          BIN_DIR="build/esp32.esp32.esp32_PartitionScheme_min_spiffs"
+          # --export-binaries drops artifacts in a board-option-suffixed
+          # subdir of build/ whose exact name varies with the arduino-cli
+          # version and FQBN options, so locate them instead of hardcoding.
+          BIN="$(find build -name 'hydro-dash.ino.bin' -print -quit)"
+          ELF="$(find build -name 'hydro-dash.ino.elf' -print -quit)"
+          if [[ -z "$BIN" || -z "$ELF" ]]; then
+            echo "::error::Build artifacts not found under build/"
+            find build -type f
+            exit 1
+          fi
           TAG="${GITHUB_REF_NAME}"
           mkdir -p dist
-          cp "$BIN_DIR/hydro-dash.ino.bin" "dist/hydro-dash-${TAG}.bin"
-          cp "$BIN_DIR/hydro-dash.ino.elf" "dist/hydro-dash-${TAG}.elf"
+          cp "$BIN" "dist/hydro-dash-${TAG}.bin"
+          cp "$ELF" "dist/hydro-dash-${TAG}.elf"
           ls -lh dist
 
       - name: Create GitHub Release
