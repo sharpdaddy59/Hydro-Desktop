@@ -1,8 +1,8 @@
 // prefs.h — NVS-backed user preferences.
 //
-// Stores: brightness mode, screen rotation, manually-added hosts (in
-// case mDNS browse is unreliable on the LAN), per-device aliases,
-// touch calibration matrix.
+// Stores: brightness mode, screen rotation, auto-cycle dwell time,
+// manually-added hosts (in case mDNS browse is unreliable on the LAN),
+// per-device aliases, touch calibration matrix.
 
 #pragma once
 
@@ -22,6 +22,15 @@ void           prefs_set_brightness_mode(BrightnessMode m);
 
 uint8_t prefs_rotation();   // 0..3 (LovyanGFX setRotation)
 void    prefs_set_rotation(uint8_t r);
+
+// Auto-cycle dwell — seconds the hero view shows each device before
+// advancing to the next. 0 disables auto-cycling (the view holds on
+// one device until tapped). prefs_set_cycle_seconds clamps to
+// [0, CYCLE_SECONDS_MAX].
+static constexpr uint8_t CYCLE_SECONDS_MAX     = 60;
+static constexpr uint8_t CYCLE_SECONDS_DEFAULT = 6;
+uint8_t prefs_cycle_seconds();
+void    prefs_set_cycle_seconds(uint8_t s);
 
 // Manual host list — hosts the user added by hand (for LANs where mDNS
 // browse misses devices). Discovery merges these into the device array.

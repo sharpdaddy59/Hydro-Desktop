@@ -9,6 +9,25 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.10:** Web settings console + configurable auto-cycle dwell.
+  The HTTP server now serves a single-page settings app at `/`
+  (gzip-compressed, embedded in PROGMEM via `web_assets.h` —
+  regenerate from `web/index.html` with `tools/gen-web-assets.ps1`),
+  replacing the old server-rendered status page. New JSON API:
+  `GET /config` plus `POST /config/{brightness,cycle,alias}` and
+  `POST /devices/remove`. The page lets the user rename devices, add
+  and remove manual hosts, switch backlight mode, and set how long
+  each device is shown before the hero view advances — previously a
+  compile-time `CYCLE_INTERVAL_MS = 6000` constant, now the `dash-ui`
+  pref `cycle` (0–60 s; `0` disables auto-cycling, holding the view
+  on one device until tapped). `cycle` is an additive NVS key, so it
+  needs no `PREFS_SCHEMA` bump — units flashed before it existed read
+  the 6 s default. The dashboard stays a stateless consumer: the web
+  UI changes only the dashboard's own settings, never the upstream
+  cores3-hydro devices. Removing a manual host stops it being
+  re-seeded but leaves its record on screen until the next reboot —
+  the device array is append-only by design so the lockless UI reader
+  stays safe.
 - **v0.1.9:** Reclaim flash for future feature growth. v0.1.8 ran at
   99% of the default partition's 1.31 MB app slot, with no room for
   the planned device-side configuration UI. The build now passes
@@ -254,10 +273,15 @@ no auth.
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/` | GET | HTML status page |
+| `/` | GET | Settings single-page app (gzipped, served from PROGMEM) |
 | `/devices` | GET | JSON snapshot of every known device |
 | `/devices` | POST | Add a manual host (form: `hostname=...`) |
+| `/devices/remove` | POST | Drop a manual host from the persisted list (form: `hostname=...`) |
 | `/status` | GET | FW version, uptime, heap, device count |
+| `/config` | GET | Brightness mode, auto-cycle dwell, manual-host list |
+| `/config/brightness` | POST | Set backlight mode (form: `mode=auto\|full\|dim`) |
+| `/config/cycle` | POST | Set auto-cycle dwell seconds (form: `seconds=N`, 0–60) |
+| `/config/alias` | POST | Set/clear a device display name (form: `hostname=...&alias=...`) |
 | `/wifi/reset` | POST | Wipe creds and reboot to AP mode |
 | `/rebrowse` | POST | Force an mDNS rebrowse |
 
@@ -267,7 +291,7 @@ Each is single-purpose so a wipe-one-thing user action doesn't hit unrelated sta
 
 | Namespace | Holds |
 |-----------|-------|
-| `dash-ui` | brightness mode, rotation |
+| `dash-ui` | brightness mode, rotation, auto-cycle dwell seconds |
 | `dash-hosts` | manually-added cores3-hydro hostnames |
 | `dash-alias` | per-hostname display alias |
 | `dash-touch` | XPT2046 calibration matrix |

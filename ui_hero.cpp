@@ -19,9 +19,8 @@ static constexpr int HERO_LINE0_Y   = HERO_TOP + 38;    // gap below name
 static constexpr int HERO_LINE_DY   = 28;
 static constexpr int RIGHT_PAD      = 8;
 
-// Cycle behavior
-static constexpr uint32_t CYCLE_INTERVAL_MS = 6000;
-
+// Cycle behavior. The dwell interval is a user preference
+// (prefs_cycle_seconds); 0 disables auto-cycling entirely.
 static int8_t   s_focused        = 0;
 static bool     s_paused         = false;
 static uint32_t s_last_cycle_ms  = 0;
@@ -229,7 +228,9 @@ static void draw_hero(bool full_redraw) {
 void ui_hero_tick() {
   if (s_paused) return;
   if (g_device_count.load() < 2) return;  // nothing to cycle to
-  if (millis() - s_last_cycle_ms <= CYCLE_INTERVAL_MS) return;
+  uint8_t secs = prefs_cycle_seconds();
+  if (secs == 0) return;                   // auto-cycle disabled by the user
+  if (millis() - s_last_cycle_ms <= (uint32_t)secs * 1000) return;
   advance_focus();
   s_last_cycle_ms = millis();
   state_bump_version();

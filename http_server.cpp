@@ -5,6 +5,7 @@
 #include "wifi_setup.h"
 #include "discovery.h"
 #include "device_id.h"
+#include "web_assets.h"
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include <cmath>
@@ -17,42 +18,19 @@ static void send_json(int code, const JsonDocument& doc) {
   s_server.send(code, "application/json", out);
 }
 
+// Standard reply for the SPA's write endpoints — it fetch()es these and
+// only checks the HTTP status, so a tiny JSON body is all that's needed.
+static void send_ok() {
+  s_server.send(200, "application/json", "{\"ok\":true}");
+}
+
+// GET / — the settings single-page app. Served straight from PROGMEM as
+// pre-gzipped bytes (see web_assets.h, generated from web/index.html).
 static void handle_root() {
-  const char* host = device_hostname();
-  String body;
-  body.reserve(1500);
-  body  = F("<!doctype html><meta charset=utf-8><title>");
-  body += host;
-  body += F("</title>"
-            "<style>"
-            "body{font-family:sans-serif;max-width:480px;margin:1.5em auto;padding:0 1em;}"
-            "h1{margin-bottom:.1em}h2{margin-top:1.5em}"
-            "form{display:inline}"
-            "button,input{font-size:1em;padding:.4em .8em;margin:.3em 0}"
-            "</style>"
-            "<h1>");
-  body += host;
-  body += F("</h1><p>Firmware " FW_VERSION ". Devices known: ");
-  body += g_device_count.load();
-  body += F(".</p>"
-            "<h2>Inspect</h2>"
-            "<ul>"
-            "<li><a href=/devices>/devices</a> &mdash; JSON device list</li>"
-            "<li><a href=/status>/status</a> &mdash; firmware, uptime, heap</li>"
-            "</ul>"
-            "<h2>Actions</h2>"
-            "<form method=POST action=/rebrowse>"
-              "<button type=submit>Re-scan mDNS</button>"
-            "</form> "
-            "<form method=POST action=/wifi/reset onsubmit=\"return confirm('Wipe WiFi credentials and reboot?');\">"
-              "<button type=submit>Reset WiFi</button>"
-            "</form>"
-            "<h2>Add a manual host</h2>"
-            "<form method=POST action=/devices>"
-              "<input name=hostname placeholder=hydro-greenhouse-1>"
-              "<button type=submit>Add</button>"
-            "</form>");
-  s_server.send(200, "text/html", body);
+  s_server.sendHeader("Content-Encoding", "gzip");
+  s_server.sendHeader("Cache-Control", "no-cache");
+  s_server.send_P(200, "text/html", (PGM_P)WEB_INDEX_HTML_GZ,
+                  WEB_INDEX_HTML_GZ_LEN);
 }
 
 // Emit a float as JSON null if NaN (cores3-hydro semantics: a null
@@ -63,14 +41,20 @@ static void emit_float_or_null(JsonObject& o, const char* k, float v) {
 }
 
 static void handle_devices_get() {
-  StaticJsonDocument<3072> doc;
+  // Static (not stack) — at 8 devices this document is several KB and
+  // the WebServer handlers run on the main loop task's modest stack.
+  // to<JsonArray>() clears it, so there's no stale carry-over.
+  static StaticJsonDocument<8192> doc;
   JsonArray arr = doc.to<JsonArray>();
   uint8_t n = g_device_count.load();
   for (uint8_t i = 0; i < n; i++) {
     const DeviceRecord& d = g_devices[i];
     JsonObject o = arr.createNestedObject();
     o["hostname"]   = d.hostname;
-    o["alias"]      = prefs_alias_for(d.hostname);
+    // prefs_alias_for() returns a pointer into a shared static buffer
+    // that the next call overwrites — wrap in String so ArduinoJson
+    // copies the value now instead of storing the soon-stale pointer.
+    o["alias"]      = String(prefs_alias_for(d.hostname));
     o["ip"]         = d.last_ip.toString();
     emit_float_or_null(o, "water_temp", d.water_temp.load());
     emit_float_or_null(o, "air_temp",   d.air_temp.load());
@@ -91,32 +75,34 @@ static void handle_devices_get() {
   send_json(200, doc);
 }
 
-// Small "you POSTed something, here's a Back link + auto-redirect"
-// landing page used by the action endpoints.
-static void send_back_html(const char* msg) {
-  String body;
-  body.reserve(400);
-  body  = F("<!doctype html><meta charset=utf-8>"
-            "<meta http-equiv=refresh content=\"2;url=/\">"
-            "<title>");
-  body += msg;
-  body += F("</title>"
-            "<body style=\"font-family:sans-serif;text-align:center;margin-top:3em\">"
-            "<p>");
-  body += msg;
-  body += F("</p><p><a href=/>&larr; Back to home</a></p>");
-  s_server.send(200, "text/html", body);
-}
-
 static void handle_devices_post() {
   if (!s_server.hasArg("hostname")) {
     s_server.send(400, "text/plain", "need hostname");
     return;
   }
   String h = s_server.arg("hostname");
+  h.trim();
+  if (!h.length()) {
+    s_server.send(400, "text/plain", "empty hostname");
+    return;
+  }
   prefs_add_manual_host(h.c_str());
   state_insert(h.c_str());
-  send_back_html("Manual host added");
+  send_ok();
+}
+
+// Remove a manually-added host from the persisted list. The device's
+// existing record stays in g_devices until the next reboot — the array
+// is append-only by design (the UI task reads it lockless), so removal
+// only stops the host being re-seeded on subsequent boots. A host that
+// is also mDNS-visible will simply be rediscovered.
+static void handle_devices_remove() {
+  if (!s_server.hasArg("hostname")) {
+    s_server.send(400, "text/plain", "need hostname");
+    return;
+  }
+  prefs_remove_manual_host(s_server.arg("hostname").c_str());
+  send_ok();
 }
 
 static void handle_status() {
@@ -128,29 +114,95 @@ static void handle_status() {
   send_json(200, doc);
 }
 
+// GET /config — settings snapshot for the SPA. manual_hosts lets the
+// page decide which device rows get a "remove" button.
+static void handle_config_get() {
+  StaticJsonDocument<1024> doc;
+  doc["fw_version"] = FW_VERSION;
+  doc["hostname"]   = device_hostname();
+
+  const char* bl = "auto";
+  switch (prefs_brightness_mode()) {
+    case BRIGHTNESS_FULL: bl = "full"; break;
+    case BRIGHTNESS_DIM:  bl = "dim";  break;
+    case BRIGHTNESS_AUTO: break;
+  }
+  doc["brightness"]    = bl;
+  doc["cycle_seconds"] = prefs_cycle_seconds();
+  doc["cycle_max"]     = CYCLE_SECONDS_MAX;
+
+  JsonArray mh = doc.createNestedArray("manual_hosts");
+  uint8_t n = prefs_manual_host_count();
+  for (uint8_t i = 0; i < n; i++) mh.add(prefs_manual_host(i));
+
+  send_json(200, doc);
+}
+
+// POST /config/brightness — form arg mode=auto|full|dim. backlight_loop
+// re-reads the mode every 500 ms, so the change applies on its own.
+static void handle_config_brightness() {
+  if (!s_server.hasArg("mode")) {
+    s_server.send(400, "text/plain", "need mode");
+    return;
+  }
+  String m = s_server.arg("mode");
+  if      (m == "auto") prefs_set_brightness_mode(BRIGHTNESS_AUTO);
+  else if (m == "full") prefs_set_brightness_mode(BRIGHTNESS_FULL);
+  else if (m == "dim")  prefs_set_brightness_mode(BRIGHTNESS_DIM);
+  else { s_server.send(400, "text/plain", "bad mode"); return; }
+  send_ok();
+}
+
+// POST /config/cycle — form arg seconds=N. 0 disables auto-cycling;
+// prefs_set_cycle_seconds clamps the upper bound. ui_hero_tick picks up
+// the new dwell on its next tick.
+static void handle_config_cycle() {
+  if (!s_server.hasArg("seconds")) {
+    s_server.send(400, "text/plain", "need seconds");
+    return;
+  }
+  long v = s_server.arg("seconds").toInt();
+  if (v < 0) v = 0;
+  if (v > CYCLE_SECONDS_MAX) v = CYCLE_SECONDS_MAX;
+  prefs_set_cycle_seconds((uint8_t)v);
+  send_ok();
+}
+
+// POST /config/alias — form args hostname=... & alias=... (empty alias
+// clears it). The hero view renders alias-or-hostname, so bump the UI
+// version to force a redraw with the new name.
+static void handle_config_alias() {
+  if (!s_server.hasArg("hostname")) {
+    s_server.send(400, "text/plain", "need hostname");
+    return;
+  }
+  String h = s_server.arg("hostname");
+  String a = s_server.hasArg("alias") ? s_server.arg("alias") : String();
+  a.trim();
+  prefs_set_alias(h.c_str(), a.c_str());
+  state_bump_version();
+  send_ok();
+}
+
 void http_server_begin() {
-  s_server.on("/",         HTTP_GET,    handle_root);
-  s_server.on("/devices",  HTTP_GET,    handle_devices_get);
-  s_server.on("/devices",  HTTP_POST,   handle_devices_post);
-  s_server.on("/status",   HTTP_GET,    handle_status);
+  s_server.on("/",                  HTTP_GET,  handle_root);
+  s_server.on("/devices",           HTTP_GET,  handle_devices_get);
+  s_server.on("/devices",           HTTP_POST, handle_devices_post);
+  s_server.on("/devices/remove",    HTTP_POST, handle_devices_remove);
+  s_server.on("/status",            HTTP_GET,  handle_status);
+  s_server.on("/config",            HTTP_GET,  handle_config_get);
+  s_server.on("/config/brightness", HTTP_POST, handle_config_brightness);
+  s_server.on("/config/cycle",      HTTP_POST, handle_config_cycle);
+  s_server.on("/config/alias",      HTTP_POST, handle_config_alias);
   s_server.on("/wifi/reset", HTTP_POST, []() {
-    String body;
-    body.reserve(400);
-    body  = F("<!doctype html><meta charset=utf-8>"
-              "<title>Resetting WiFi</title>"
-              "<body style=\"font-family:sans-serif;text-align:center;margin-top:3em\">"
-              "<p>Wiping WiFi credentials and rebooting. The device will "
-              "come back online in setup-AP mode named "
-              "<code>");
-    body += device_hostname();
-    body += F("-setup</code>.</p>");
-    s_server.send(200, "text/html", body);
+    s_server.send(200, "text/plain",
+                  "Resetting WiFi - rebooting into the setup access point.");
     delay(500);
     wifi_setup_reset_and_reboot();
   });
   s_server.on("/rebrowse", HTTP_POST, []() {
     discovery_force_rebrowse();
-    send_back_html("mDNS re-scan triggered");
+    send_ok();
   });
   s_server.begin();
 }

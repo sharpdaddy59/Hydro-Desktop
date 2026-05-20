@@ -109,7 +109,14 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
   device side, not the other way round.
 - **New NVS-persisted state:** mirror existing namespaces in `prefs.cpp`.
   Separate `Preferences` namespace, load in `prefs_load`, save inline
-  on change.
+  on change. An *additive* key in an existing namespace (a new getter
+  with a sensible default) needs no `PREFS_SCHEMA` bump — only bump
+  when the meaning of an existing value changes.
+- **Web settings UI:** edit `web/index.html`, then regenerate
+  `web_assets.h` via `tools/gen-web-assets.ps1`. The build embeds the
+  committed header and never reads the HTML directly — an edit that
+  isn't regenerated ships nothing. New settings reach the SPA through
+  the `/config` JSON endpoints in `http_server.cpp`.
 - **User-facing changes:** bump `FW_VERSION` in `config.h`, add a note
   to the changelog at the top of `docs/hydro-dash-spec.md`.
 - **Spec doc is the source of truth** for design decisions. If behavior
@@ -132,7 +139,24 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Recent state
 
-- **v0.1.9 (current):** Reclaim flash via partition swap. v0.1.8
+- **v0.1.10 (current):** Web settings console + configurable
+  auto-cycle dwell. `/` now serves a gzip-compressed single-page
+  settings app (embedded in PROGMEM via `web_assets.h`, generated
+  from `web/index.html` by `tools/gen-web-assets.ps1`) instead of the
+  old server-rendered status page. New write API: `GET /config`,
+  `POST /config/{brightness,cycle,alias}`, `POST /devices/remove`.
+  The hero auto-cycle interval — formerly the compile-time
+  `CYCLE_INTERVAL_MS = 6000` in `ui_hero.cpp` — is now the `dash-ui`
+  NVS pref `cycle` (`prefs_cycle_seconds`, 0–60 s, `0` = no cycling).
+  Additive key, no `PREFS_SCHEMA` bump — existing units read the 6 s
+  default. Scope held to the dashboard's own settings; no upstream
+  cores3-hydro control. Removing a manual host only un-seeds it — the
+  record persists in `g_devices` until reboot because the array is
+  append-only (the UI task reads it lockless). Also fixed a latent
+  `/devices` bug: per-device `alias` stored the shared
+  `prefs_alias_for` static-buffer pointer, so every row reported the
+  last device's alias.
+- **v0.1.9:** Reclaim flash via partition swap. v0.1.8
   was at 99% of the default partition's 1.31 MB app slot. Build now
   passes `--board-options PartitionScheme=min_spiffs` to
   `arduino-cli` in `build.ps1` and the release workflow, promoting
@@ -245,3 +269,4 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 - `ui.cpp` — LovyanGFX panel config (pin numbers come from `config.h`)
 - `poller.cpp` — HTTP polling task; the `/sensors` contract lives here
 - `discovery.cpp` — mDNS browse + manual-host seeding
+- `http_server.cpp` / `web/index.html` — management HTTP API + settings SPA

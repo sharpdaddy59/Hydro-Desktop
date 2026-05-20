@@ -15,8 +15,9 @@ static Preferences s_touch;    // namespace "dash-touch"
 // On boot, mismatched schema triggers a one-time reset to safe defaults.
 static constexpr uint8_t PREFS_SCHEMA = 6;
 
-static BrightnessMode s_mode = BRIGHTNESS_AUTO;
-static uint8_t        s_rot  = 4;             // CYD landscape (panel swap + offset_y=80 in ui.cpp)
+static BrightnessMode s_mode  = BRIGHTNESS_AUTO;
+static uint8_t        s_rot   = 4;            // CYD landscape (panel swap + offset_y=80 in ui.cpp)
+static uint8_t        s_cycle = CYCLE_SECONDS_DEFAULT;  // auto-cycle dwell, seconds
 static std::vector<std::string> s_manual_hosts;
 
 static void load_manual_hosts() {
@@ -52,17 +53,22 @@ void prefs_load() {
   if (schema != PREFS_SCHEMA) {
     // First boot of this build (or a schema-incompatible upgrade).
     // Reset to safe defaults and write the new schema number.
-    s_mode = BRIGHTNESS_AUTO;
-    s_rot  = 4;
+    s_mode  = BRIGHTNESS_AUTO;
+    s_rot   = 4;
+    s_cycle = CYCLE_SECONDS_DEFAULT;
     s_ui.begin("dash-ui", false);
     s_ui.putUChar("mode",   (uint8_t)s_mode);
     s_ui.putUChar("rot",    s_rot);
+    s_ui.putUChar("cycle",  s_cycle);
     s_ui.putUChar("schema", PREFS_SCHEMA);
     s_ui.end();
   } else {
     s_ui.begin("dash-ui", true);
     s_mode = (BrightnessMode)s_ui.getUChar("mode", BRIGHTNESS_AUTO);
     s_rot  = s_ui.getUChar("rot", 4);
+    // "cycle" is an additive key (v0.1.10). Units flashed before it
+    // existed simply read the default here — no schema bump needed.
+    s_cycle = s_ui.getUChar("cycle", CYCLE_SECONDS_DEFAULT);
     s_ui.end();
   }
   load_manual_hosts();
@@ -70,8 +76,9 @@ void prefs_load() {
 
 void prefs_save() {
   s_ui.begin("dash-ui", false);
-  s_ui.putUChar("mode", (uint8_t)s_mode);
-  s_ui.putUChar("rot",  s_rot);
+  s_ui.putUChar("mode",  (uint8_t)s_mode);
+  s_ui.putUChar("rot",   s_rot);
+  s_ui.putUChar("cycle", s_cycle);
   s_ui.end();
 }
 
@@ -79,6 +86,13 @@ BrightnessMode prefs_brightness_mode()           { return s_mode; }
 void           prefs_set_brightness_mode(BrightnessMode m) { s_mode = m; prefs_save(); }
 uint8_t        prefs_rotation()                  { return s_rot;  }
 void           prefs_set_rotation(uint8_t r)     { s_rot = r;  prefs_save(); }
+
+uint8_t prefs_cycle_seconds() { return s_cycle; }
+void    prefs_set_cycle_seconds(uint8_t s) {
+  if (s > CYCLE_SECONDS_MAX) s = CYCLE_SECONDS_MAX;
+  s_cycle = s;
+  prefs_save();
+}
 
 uint8_t prefs_manual_host_count() { return (uint8_t)s_manual_hosts.size(); }
 const char* prefs_manual_host(uint8_t i) {

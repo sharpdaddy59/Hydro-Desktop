@@ -13,7 +13,8 @@ just shows what's true right now.
 
 - **Hero view** — one device at a time, big text-size-3 readings
   (water / air / humidity / light), readable from desk distance.
-  Auto-cycles every 6 s when more than one device is present.
+  Cycles through devices on a timer (6 s each by default; adjustable
+  3–60 s or disabled entirely from the web settings console).
 - **Status-dot strip** at the top, one colored dot per known device:
   green = fresh, yellow = sim mode, gray = stale or no data. Tap a dot
   to focus that device + pause cycling. Tap the hero pane to toggle
@@ -34,8 +35,11 @@ just shows what's true right now.
   named `<hostname>-setup`; join from a phone, captive portal does the
   rest.
 - **LDR-driven backlight auto-dim** — won't burn in on a desk.
-- Small management API on port 80 (`/devices`, `/status`, `/wifi/reset`,
-  `/rebrowse`).
+- **Web settings console** on port 80 — open `http://<hostname>.local/`
+  from any browser on the LAN to rename devices, add/remove manual
+  hosts, switch backlight mode, and set the auto-cycle dwell time. A
+  matching JSON API (`/devices`, `/config`, `/status`, `/rebrowse`,
+  `/wifi/reset`) backs it.
 
 ## Hardware
 

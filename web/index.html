@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang=en>
+<meta charset=utf-8>
+<meta name=viewport content="width=device-width,initial-scale=1">
+<title>hydro-dash</title>
+<!--
+  hydro-dash settings SPA. Single self-contained file — no external
+  fetches (the dashboard lives on a LAN that may have no internet).
+  Source of truth for the served page: this file is gzipped into
+  web_assets.h by tools/gen-web-assets.ps1. Edit here, then regenerate.
+-->
+<style>
+  :root { color-scheme: dark }
+  * { box-sizing: border-box }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #0e1116; color: #d6dde6;
+    max-width: 560px; margin: 0 auto; padding: 1rem 1rem 3rem;
+  }
+  h1 { font-size: 1.3rem; margin: .2rem 0 }
+  h2 {
+    font-size: .8rem; text-transform: uppercase; letter-spacing: .08em;
+    color: #7b8794; margin: 1.7rem 0 .5rem;
+    border-bottom: 1px solid #232a33; padding-bottom: .3rem;
+  }
+  .sub { color: #7b8794; font-size: .85rem; margin: 0 0 .5rem }
+  .muted { color: #7b8794; font-size: .8rem; margin: .4rem 0 0 }
+  .card {
+    background: #171c24; border: 1px solid #232a33; border-radius: 8px;
+    padding: .7rem .8rem; margin: .5rem 0;
+  }
+  .dev-name { font-weight: 600; font-size: 1.05rem }
+  .dot {
+    display: inline-block; width: .62rem; height: .62rem;
+    border-radius: 50%; margin-right: .45rem; vertical-align: middle;
+  }
+  .readings { color: #9aa7b4; font-size: .9rem; margin: .35rem 0 }
+  .readings b { color: #d6dde6; font-weight: 600 }
+  .row { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap }
+  input, select, button {
+    font: inherit; padding: .42rem .6rem; border-radius: 6px;
+    border: 1px solid #2f3742; background: #0e1116; color: #d6dde6;
+  }
+  input { flex: 1; min-width: 8rem }
+  button { background: #2563eb; border-color: #2563eb; color: #fff; cursor: pointer }
+  button.sec { background: #222a35; border-color: #2f3742; color: #d6dde6 }
+  button.danger { background: #3a1d1d; border-color: #5c2b2b; color: #f0b4b4 }
+  button:active { transform: translateY(1px) }
+  .seg { gap: 0 }
+  .seg button { border-radius: 0; flex: 1; background: #222a35; border-color: #2f3742; color: #d6dde6 }
+  .seg button:first-child { border-radius: 6px 0 0 6px }
+  .seg button:last-child { border-radius: 0 6px 6px 0 }
+  .seg button.on { background: #2563eb; border-color: #2563eb; color: #fff }
+  label.fld { display: block; font-size: .85rem; color: #9aa7b4; margin: .8rem 0 .3rem }
+  label.fld:first-child { margin-top: 0 }
+  #toast {
+    position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%);
+    background: #222a35; border: 1px solid #2f3742; color: #d6dde6;
+    padding: .55rem 1rem; border-radius: 6px; max-width: 90%;
+    opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  #toast.show { opacity: 1 }
+</style>
+
+<h1 id=host>hydro-dash</h1>
+<p class=sub id=fw>&nbsp;</p>
+
+<h2>Devices</h2>
+<div id=devices></div>
+<div class=card>
+  <div class=row>
+    <input id=addhost placeholder="add host, e.g. hydro-greenhouse" autocomplete=off>
+    <button onclick=addHost()>Add</button>
+  </div>
+  <p class=muted>Manually add a hydro device that mDNS discovery misses.</p>
+</div>
+
+<h2>Display</h2>
+<div class=card>
+  <label class=fld>Backlight</label>
+  <div class="row seg" id=bl>
+    <button data-m=auto onclick="setBl('auto')">Auto</button>
+    <button data-m=full onclick="setBl('full')">Full</button>
+    <button data-m=dim  onclick="setBl('dim')">Dim</button>
+  </div>
+  <label class=fld>Device display time</label>
+  <div class=row>
+    <select id=cycle onchange=setCycle()></select>
+  </div>
+  <p class=muted>How long each device is shown before the dashboard
+    advances to the next. &ldquo;Never&rdquo; holds on one device until
+    you tap the screen.</p>
+</div>
+
+<h2>Actions</h2>
+<div class=card>
+  <div class=row>
+    <button class=sec onclick=rescan()>Re-scan mDNS</button>
+    <button class=danger onclick=wifiReset()>Reset WiFi</button>
+  </div>
+</div>
+
+<div id=toast></div>
+
+<script>
+const $ = s => document.querySelector(s);
+let cfg = { manual_hosts: [] };
+
+function toast(m) {
+  const t = $('#toast');
+  t.textContent = m;
+  t.classList.add('show');
+  clearTimeout(t._t);
+  t._t = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"]/g,
+    c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+}
+
+async function post(url, data) {
+  const r = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(data).toString(),
+  });
+  if (!r.ok) throw new Error((await r.text()) || r.status);
+  return r;
+}
+
+function fmt(v, suffix) {
+  return (v == null) ? '—' : (Math.round(v * 10) / 10) + suffix;
+}
+
+async function loadConfig() {
+  cfg = await (await fetch('/config')).json();
+  $('#host').textContent = cfg.hostname || 'hydro-dash';
+  $('#fw').textContent = 'Firmware ' + cfg.fw_version;
+  document.title = cfg.hostname || 'hydro-dash';
+
+  document.querySelectorAll('#bl button').forEach(
+    b => b.classList.toggle('on', b.dataset.m === cfg.brightness));
+
+  const sel = $('#cycle');
+  sel.innerHTML = '';
+  const opts = [[0, 'Never'], [3, '3 s'], [5, '5 s'], [6, '6 s'],
+                [10, '10 s'], [15, '15 s'], [30, '30 s']];
+  if (!opts.some(o => o[0] === cfg.cycle_seconds))
+    opts.push([cfg.cycle_seconds, cfg.cycle_seconds + ' s']);
+  opts.sort((a, b) => a[0] - b[0]);
+  for (const [v, label] of opts) {
+    const o = document.createElement('option');
+    o.value = v;
+    o.textContent = label;
+    sel.appendChild(o);
+  }
+  sel.value = cfg.cycle_seconds;
+}
+
+async function loadDevices() {
+  let list;
+  try {
+    list = await (await fetch('/devices')).json();
+  } catch (e) {
+    return;  // transient — keep the last render, try again next poll
+  }
+  const box = $('#devices');
+  if (!list.length) {
+    box.innerHTML = '<div class="card muted">No devices yet — ' +
+      'discovery is scanning the LAN.</div>';
+    return;
+  }
+  box.innerHTML = '';
+  for (const d of list) {
+    const tu = d.temperature_units === 'fahrenheit' ? '°F' : '°C';
+    const color = d.stale ? '#5c6470' : '#37c871';
+    const manual = cfg.manual_hosts.includes(d.hostname);
+    const c = document.createElement('div');
+    c.className = 'card';
+    c.innerHTML =
+      '<div class=dev-name><span class=dot style="background:' + color + '"></span>' +
+      esc(d.alias || d.hostname) + '</div>' +
+      '<div class=readings>Water <b>' + fmt(d.water_temp, tu) + '</b> &middot; ' +
+      'Air <b>' + fmt(d.air_temp, tu) + '</b> &middot; ' +
+      'Humidity <b>' + fmt(d.humidity, '%') + '</b> &middot; ' +
+      'Light <b>' + fmt(d.light, '') + '</b></div>' +
+      '<div class=muted>' + esc(d.hostname) + ' &middot; ' + esc(d.ip) +
+      ' &middot; RSSI ' + d.rssi + (d.stale ? ' &middot; stale' : '') + '</div>' +
+      '<div class=row style="margin-top:.55rem">' +
+      '<input class=alias placeholder="display name" maxlength=31 ' +
+      'value="' + esc(d.alias || '') + '" autocomplete=off>' +
+      '<button class=save>Save</button>' +
+      (manual ? '<button class="danger rm">Remove</button>' : '') +
+      '</div>';
+    const inp = c.querySelector('.alias');
+    c.querySelector('.save').onclick = () => saveAlias(d.hostname, inp.value);
+    if (manual) c.querySelector('.rm').onclick = () => removeHost(d.hostname);
+    box.appendChild(c);
+  }
+}
+
+async function saveAlias(host, alias) {
+  try {
+    await post('/config/alias', { hostname: host, alias: alias.trim() });
+    toast('Display name saved');
+    await refresh();
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+async function setBl(mode) {
+  try {
+    await post('/config/brightness', { mode });
+    await loadConfig();
+    toast('Backlight: ' + mode);
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+async function setCycle() {
+  try {
+    await post('/config/cycle', { seconds: $('#cycle').value });
+    toast('Display time updated');
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+async function addHost() {
+  const v = $('#addhost').value.trim();
+  if (!v) return;
+  try {
+    await post('/devices', { hostname: v });
+    $('#addhost').value = '';
+    toast('Host added');
+    await refresh();
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+async function removeHost(host) {
+  if (!confirm('Remove ' + host + '?')) return;
+  try {
+    await post('/devices/remove', { hostname: host });
+    toast('Removed — clears from the display after the next restart');
+    await refresh();
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+async function rescan() {
+  try {
+    await post('/rebrowse', {});
+    toast('mDNS re-scan triggered');
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+async function wifiReset() {
+  if (!confirm('Wipe WiFi credentials and reboot into setup mode?')) return;
+  try {
+    await post('/wifi/reset', {});
+    toast('Rebooting into the setup access point.');
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+async function refresh() {
+  await loadConfig();
+  await loadDevices();
+}
+
+refresh();
+setInterval(loadDevices, 5000);
+</script>
