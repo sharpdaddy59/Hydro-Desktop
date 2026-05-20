@@ -9,6 +9,24 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.11:** Browser-driven firmware updates + JSON endpoint links.
+  The settings SPA gains a Firmware section — pick a `.bin`, watch a
+  progress bar, the device verifies the image and reboots into it —
+  and an API section linking the live JSON endpoints (`/devices`,
+  `/config`, `/status`) so they are discoverable. New module
+  `ota.cpp` registers `POST /ota/upload`: a multipart upload fed
+  straight to the `Update` library. Unlike cores3-hydro, which
+  buffers the whole image in PSRAM before flashing, the CYD has no
+  PSRAM — so each multipart chunk streams directly into the inactive
+  OTA app partition. Still safe: `Update` writes only the spare
+  partition and flips the boot pointer at `end()`, so an interrupted
+  or invalid upload leaves the running firmware bootable and
+  untouched. The synchronous `WebServer` blocks for the upload's
+  duration, which freezes the on-screen UI until the reboot — fine
+  for a ~10–30 s operation. The OTA partition layout is the one
+  v0.1.9's `min_spiffs` swap preserved (two ~1.9 MB app slots). The
+  SPA pauses its device-list poll during an upload so it does not
+  compete with the transfer on the single-threaded server.
 - **v0.1.10:** Web settings console + configurable auto-cycle dwell.
   The HTTP server now serves a single-page settings app at `/`
   (gzip-compressed, embedded in PROGMEM via `web_assets.h` —
@@ -284,6 +302,7 @@ no auth.
 | `/config/alias` | POST | Set/clear a device display name (form: `hostname=...&alias=...`) |
 | `/wifi/reset` | POST | Wipe creds and reboot to AP mode |
 | `/rebrowse` | POST | Force an mDNS rebrowse |
+| `/ota/upload` | POST | Multipart firmware-image upload; verifies, then reboots |
 
 ## NVS namespaces
 

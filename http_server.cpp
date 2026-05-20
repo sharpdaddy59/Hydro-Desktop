@@ -6,6 +6,7 @@
 #include "discovery.h"
 #include "device_id.h"
 #include "web_assets.h"
+#include "ota.h"
 #include <WebServer.h>
 #include <ArduinoJson.h>
 #include <cmath>
@@ -204,6 +205,8 @@ void http_server_begin() {
     discovery_force_rebrowse();
     send_ok();
   });
+  // POST /ota/upload — browser-driven firmware update. Owned by ota.cpp.
+  ota_register(s_server);
   s_server.begin();
 }
 

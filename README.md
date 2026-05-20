@@ -37,9 +37,11 @@ just shows what's true right now.
 - **LDR-driven backlight auto-dim** — won't burn in on a desk.
 - **Web settings console** on port 80 — open `http://<hostname>.local/`
   from any browser on the LAN to rename devices, add/remove manual
-  hosts, switch backlight mode, and set the auto-cycle dwell time. A
-  matching JSON API (`/devices`, `/config`, `/status`, `/rebrowse`,
-  `/wifi/reset`) backs it.
+  hosts, switch backlight mode, tune the auto-cycle dwell time, and
+  apply **firmware updates** (upload a `.bin`; the device verifies the
+  image and reboots into it). A matching JSON API (`/devices`,
+  `/config`, `/status`, `/rebrowse`, `/wifi/reset`, `/ota/upload`)
+  backs it.
 
 ## Hardware
 

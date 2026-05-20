@@ -25,6 +25,7 @@
   }
   .sub { color: #7b8794; font-size: .85rem; margin: 0 0 .5rem }
   .muted { color: #7b8794; font-size: .8rem; margin: .4rem 0 0 }
+  code { background: #222a35; padding: 1px 5px; border-radius: 4px; font-size: .85em }
   .card {
     background: #171c24; border: 1px solid #232a33; border-radius: 8px;
     padding: .7rem .8rem; margin: .5rem 0;
@@ -42,10 +43,12 @@
     border: 1px solid #2f3742; background: #0e1116; color: #d6dde6;
   }
   input { flex: 1; min-width: 8rem }
+  input[type=file] { padding: .3rem }
   button { background: #2563eb; border-color: #2563eb; color: #fff; cursor: pointer }
   button.sec { background: #222a35; border-color: #2f3742; color: #d6dde6 }
   button.danger { background: #3a1d1d; border-color: #5c2b2b; color: #f0b4b4 }
   button:active { transform: translateY(1px) }
+  button:disabled { opacity: .5; cursor: not-allowed }
   .seg { gap: 0 }
   .seg button { border-radius: 0; flex: 1; background: #222a35; border-color: #2f3742; color: #d6dde6 }
   .seg button:first-child { border-radius: 6px 0 0 6px }
@@ -53,6 +56,13 @@
   .seg button.on { background: #2563eb; border-color: #2563eb; color: #fff }
   label.fld { display: block; font-size: .85rem; color: #9aa7b4; margin: .8rem 0 .3rem }
   label.fld:first-child { margin-top: 0 }
+  progress { width: 100%; height: 1.1rem; margin-top: .5rem }
+  .api a {
+    color: #7cc0ff; text-decoration: none; font-size: .9rem;
+    border: 1px solid #2f3742; border-radius: 6px;
+    padding: .3rem .65rem; background: #0e1116;
+  }
+  .api a:hover { border-color: #2563eb }
   #toast {
     position: fixed; left: 50%; bottom: 1rem; transform: translateX(-50%);
     background: #222a35; border: 1px solid #2f3742; color: #d6dde6;
@@ -100,11 +110,44 @@
   </div>
 </div>
 
+<h2>Firmware</h2>
+<div class=card>
+  <p class=muted>Running <code id=fwver>&hellip;</code>. Upload a
+    hydro-dash <code>.bin</code> built for the CYD — the device verifies
+    the image and reboots into it. An interrupted or invalid upload
+    leaves the current firmware running.</p>
+  <div class=row>
+    <input type=file id=fwfile accept=".bin">
+    <button id=fwbtn onclick=uploadFw()>Update</button>
+  </div>
+  <progress id=fwprog value=0 max=100 hidden></progress>
+  <div class=muted id=fwstatus></div>
+</div>
+
+<h2>API</h2>
+<div class=card>
+  <p class=muted>Live JSON served by this device — open in a new tab.</p>
+  <div class="row api">
+    <a href=/devices target=_blank rel=noopener>/devices</a>
+    <a href=/config target=_blank rel=noopener>/config</a>
+    <a href=/status target=_blank rel=noopener>/status</a>
+  </div>
+</div>
+
 <div id=toast></div>
 
 <script>
 const $ = s => document.querySelector(s);
 let cfg = { manual_hosts: [] };
+let pollTimer = null;
+
+function startPolling() {
+  if (!pollTimer) pollTimer = setInterval(loadDevices, 5000);
+}
+function stopPolling() {
+  clearInterval(pollTimer);
+  pollTimer = null;
+}
 
 function toast(m) {
   const t = $('#toast');
@@ -137,6 +180,7 @@ async function loadConfig() {
   cfg = await (await fetch('/config')).json();
   $('#host').textContent = cfg.hostname || 'hydro-dash';
   $('#fw').textContent = 'Firmware ' + cfg.fw_version;
+  $('#fwver').textContent = cfg.fw_version;
   document.title = cfg.hostname || 'hydro-dash';
 
   document.querySelectorAll('#bl button').forEach(
@@ -258,11 +302,63 @@ async function wifiReset() {
   } catch (e) { toast('Failed: ' + e.message); }
 }
 
+// Firmware update — XMLHttpRequest (not fetch) for upload progress
+// events. The HTTP server is single-threaded, so polling is paused for
+// the duration to avoid competing with the upload.
+function uploadFw() {
+  const file = $('#fwfile').files[0];
+  if (!file) { toast('Choose a .bin file first'); return; }
+  if (!confirm('Flash ' + file.name + ' (' + Math.round(file.size / 1024) +
+               ' KB) and reboot the dashboard?')) return;
+
+  const btn = $('#fwbtn'), fileInput = $('#fwfile');
+  const prog = $('#fwprog'), st = $('#fwstatus');
+  const fd = new FormData();
+  fd.append('firmware', file);
+
+  const xhr = new XMLHttpRequest();
+  xhr.upload.onprogress = e => {
+    if (e.lengthComputable) {
+      prog.value = Math.round(e.loaded / e.total * 100);
+      st.textContent = 'Uploading ' + prog.value + '%';
+    }
+  };
+  xhr.onload = () => {
+    if (xhr.status >= 200 && xhr.status < 300) {
+      prog.value = 100;
+      st.textContent = 'Image verified — the device is rebooting. ' +
+        'Reload this page in about 20 seconds.';
+    } else {
+      let msg = xhr.responseText;
+      try { msg = JSON.parse(xhr.responseText).error || msg; } catch (e) {}
+      st.textContent = 'Update failed: ' + msg;
+      btn.disabled = false;
+      fileInput.disabled = false;
+      startPolling();
+    }
+  };
+  xhr.onerror = () => {
+    st.textContent = 'Connection lost during upload.';
+    btn.disabled = false;
+    fileInput.disabled = false;
+    startPolling();
+  };
+
+  stopPolling();
+  btn.disabled = true;
+  fileInput.disabled = true;
+  prog.hidden = false;
+  prog.value = 0;
+  st.textContent = 'Starting upload…';
+  xhr.open('POST', '/ota/upload');
+  xhr.send(fd);
+}
+
 async function refresh() {
   await loadConfig();
   await loadDevices();
 }
 
 refresh();
-setInterval(loadDevices, 5000);
+startPolling();
 </script>

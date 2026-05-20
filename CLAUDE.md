@@ -139,7 +139,22 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Recent state
 
-- **v0.1.10 (current):** Web settings console + configurable
+- **v0.1.11 (current):** Browser-driven firmware updates. New module
+  `ota.cpp` / `ota.h` registers `POST /ota/upload` — a multipart
+  firmware upload streamed straight to the `Update` library.
+  `ota_register(s_server)` is called from `http_server_begin()`. The
+  CYD has no PSRAM, so unlike cores3-hydro (which buffers the whole
+  image in PSRAM, freeing camera framebuffers to make room) each
+  chunk streams directly into the inactive OTA app partition;
+  `Update` flips the boot pointer only on a verified `end(true)`, so
+  an interrupted or invalid upload is a safe no-op. The settings SPA
+  gains a Firmware section (file picker + progress bar, `XMLHttp`
+  upload for progress events) and an API section linking the GET
+  JSON endpoints. The SPA pauses its device-list poll during an
+  upload — the synchronous `WebServer` serves one request at a time
+  and `handleClient()` blocks for the whole transfer, which also
+  freezes the on-screen UI (drawn from `loop()`) until the reboot.
+- **v0.1.10:** Web settings console + configurable
   auto-cycle dwell. `/` now serves a gzip-compressed single-page
   settings app (embedded in PROGMEM via `web_assets.h`, generated
   from `web/index.html` by `tools/gen-web-assets.ps1`) instead of the
@@ -270,3 +285,4 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 - `poller.cpp` — HTTP polling task; the `/sensors` contract lives here
 - `discovery.cpp` — mDNS browse + manual-host seeding
 - `http_server.cpp` / `web/index.html` — management HTTP API + settings SPA
+- `ota.cpp` — browser-driven firmware update (`POST /ota/upload`)
