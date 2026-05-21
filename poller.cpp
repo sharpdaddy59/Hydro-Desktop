@@ -26,29 +26,8 @@ static float json_float_or_nan(JsonVariantConst v) {
   return v.as<float>();
 }
 
-// Store v into dst only if it differs from the current value. Returns
-// true iff a write happened — callers OR this into a `changed` flag and
-// only bump the UI version when something visible actually moved.
-// Without this, a poll that returned identical readings still triggered
-// a full hero redraw (POLL_INTERVAL_MS / N_devices apart), which the
-// user saw as a periodic flash between cycle transitions.
-template <typename T>
-static bool set_if_changed(std::atomic<T>& dst, T v) {
-  T old = dst.load();
-  if (old == v) return false;
-  dst.store(v);
-  return true;
-}
-
-// NaN-aware float variant: treat NaN→NaN as no-change. Without this a
-// disabled-upstream sensor (value is null → NaN every poll) would
-// register as a change on every comparison since NaN != NaN per IEEE 754.
-static bool set_float_if_changed(std::atomic<float>& dst, float v) {
-  float old = dst.load();
-  if ((isnan(old) && isnan(v)) || old == v) return false;
-  dst.store(v);
-  return true;
-}
+// set_if_changed / set_float_if_changed live in state.h — shared with
+// ble_scanner.cpp, which is the other producer of DeviceRecord readings.
 
 static bool poll_sensors(DeviceRecord& d) {
   HTTPClient http;
@@ -154,6 +133,10 @@ static void task_poller(void* /*arg*/) {
     uint8_t n = g_device_count.load();
     for (uint8_t i = 0; i < n; i++) {
       DeviceRecord& d = g_devices[i];
+      // BLE devices have no IP and are not polled — ble_scanner.cpp owns
+      // their readings and staleness. Without this skip the poller would
+      // HTTP-fail every cycle and fight the scanner over the stale flag.
+      if ((DeviceKind)d.device_kind.load() == DeviceKind::BLE) continue;
       if (!poll_sensors(d)) {
         uint16_t f = d.consecutive_fails.load() + 1;
         d.consecutive_fails.store(f);

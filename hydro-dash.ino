@@ -17,6 +17,7 @@
 #include "wifi_setup.h"
 #include "discovery.h"
 #include "poller.h"
+#include "ble_scanner.h"
 #include "http_server.h"
 
 void setup() {
@@ -44,6 +45,10 @@ void setup() {
   // mDNS browse + per-device polling tasks.
   discovery_begin();
   poller_begin();
+
+  // Passive BLE advertisement scan for Govee H5075 sensors. After WiFi so
+  // BLE init doesn't contend with WiFiManager's AP-mode radio use.
+  ble_scanner_begin();
 
   // Optional management API — /devices, /wifi/reset, /status.
   http_server_begin();

@@ -14,6 +14,15 @@ enum BrightnessMode : uint8_t {
   BRIGHTNESS_DIM  = 2,
 };
 
+// Dashboard-wide temperature display unit. AUTO mirrors whatever unit each
+// device reports (the original behavior); CELSIUS / FAHRENHEIT convert
+// every tile's temperatures to that unit at render time.
+enum TempUnitPref : uint8_t {
+  TEMP_UNIT_AUTO       = 0,
+  TEMP_UNIT_CELSIUS    = 1,
+  TEMP_UNIT_FAHRENHEIT = 2,
+};
+
 void prefs_load();
 void prefs_save();
 
@@ -31,6 +40,10 @@ static constexpr uint8_t CYCLE_SECONDS_MAX     = 60;
 static constexpr uint8_t CYCLE_SECONDS_DEFAULT = 6;
 uint8_t prefs_cycle_seconds();
 void    prefs_set_cycle_seconds(uint8_t s);
+
+// Temperature display unit — see TempUnitPref. Dashboard-wide.
+TempUnitPref prefs_temp_unit();
+void         prefs_set_temp_unit(TempUnitPref u);
 
 // Manual host list — hosts the user added by hand (for LANs where mDNS
 // browse misses devices). Discovery merges these into the device array.

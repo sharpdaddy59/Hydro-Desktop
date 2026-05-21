@@ -12,9 +12,11 @@ just shows what's true right now.
 ## Features
 
 - **Hero view** — one device at a time, big text-size-3 readings
-  (water / air / humidity / light), readable from desk distance.
+  readable from desk distance: water / air / humidity / light for
+  cores3-hydro units, air / humidity / battery for Govee BLE sensors.
   Cycles through devices on a timer (6 s each by default; adjustable
   3–60 s or disabled entirely from the web settings console).
+  Temperatures display in °C, °F, or each device's own unit (Auto).
 - **Status-dot strip** at the top, one colored dot per known device:
   green = fresh, yellow = sim mode, gray = stale or no data. Tap a dot
   to focus that device + pause cycling. Tap the hero pane to toggle
@@ -31,25 +33,31 @@ just shows what's true right now.
   default `cores3-hydro-*` prefix).
 - **Manual host fallback** for routers with flaky mDNS — host list is
   persisted in NVS and merged with discovery results.
+- **Govee BLE sensors** — passively scans for Govee H5075
+  temperature/humidity sensors and shows each as its own tile next to
+  the polled cores3-hydro units. No pairing or setup — it just listens
+  for their BLE advertisements. See
+  [`docs/govee-ble.md`](docs/govee-ble.md) for the wire format.
 - **WiFiManager AP onboarding** — first boot opens a per-device AP
   named `<hostname>-setup`; join from a phone, captive portal does the
   rest.
 - **LDR-driven backlight auto-dim** — won't burn in on a desk.
 - **Web settings console** on port 80 — open `http://<hostname>.local/`
   from any browser on the LAN to rename devices, add/remove manual
-  hosts, switch backlight mode, tune the auto-cycle dwell time, and
-  apply **firmware updates** (upload a `.bin`; the device verifies the
-  image and reboots into it). A matching JSON API (`/devices`,
-  `/config`, `/status`, `/rebrowse`, `/wifi/reset`, `/ota/upload`)
-  backs it.
+  hosts, switch backlight mode, tune the auto-cycle dwell time, choose
+  the temperature unit (°C / °F / Auto), and apply **firmware updates**
+  (upload a `.bin`; the device verifies the image and reboots into it).
+  A matching JSON API backs it — see the table below.
 
 ## Hardware
 
 - **Sunton ESP32-2432S028R** (the "Cheap Yellow Display"): ESP32-WROOM-32,
   2.8" 320×240 ILI9341, XPT2046 resistive touch, on-board LDR, RGB LED,
   microSD, two USB ports.
-- That's it. No additional sensors needed — readings come from the
-  cores3-hydro devices over the LAN.
+- No extra wiring needed. cores3-hydro readings arrive over the LAN;
+  Govee H5075 sensors in BLE range are picked up automatically. The
+  on-board LDR (backlight auto-dim) is the only sensor on the board
+  itself.
 
 > **Other CYD revisions:** the `S028C` (capacitive) and various clone
 > variants have different pin maps and may need different LovyanGFX
@@ -83,23 +91,31 @@ hydros.
 
 The dashboard exposes a small management API on port 80. LAN-trusted, no auth.
 
-| Endpoint | Methods | Description |
-|----------|---------|-------------|
-| `/` | GET | Status page |
-| `/devices` | GET, POST | List known devices / add a manual host |
-| `/status` | GET | FW version, uptime, heap, device count |
-| `/wifi/reset` | POST | Wipe stored credentials and reboot |
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/` | GET | Settings single-page app |
+| `/devices` | GET | JSON snapshot of every device (`kind` http/ble, `mac` for BLE) |
+| `/devices` | POST | Add a manual host (`hostname=...`) |
+| `/devices/remove` | POST | Drop a manual host from the persisted list (`hostname=...`) |
+| `/status` | GET | FW version, uptime, free heap, device count |
+| `/config` | GET | Brightness, auto-cycle dwell, temperature unit, manual hosts |
+| `/config/brightness` | POST | Backlight mode (`mode=auto\|full\|dim`) |
+| `/config/cycle` | POST | Auto-cycle dwell seconds (`seconds=N`, 0–60) |
+| `/config/units` | POST | Temperature unit (`unit=auto\|celsius\|fahrenheit`) |
+| `/config/alias` | POST | Set/clear a device display name (`hostname=...&alias=...`) |
 | `/rebrowse` | POST | Force an mDNS rebrowse |
+| `/wifi/reset` | POST | Wipe stored credentials and reboot to AP mode |
+| `/ota/upload` | POST | Multipart firmware-image upload; verifies, then reboots |
 
 ## Project layout
 
 ```
 hydro-dash/
 ├── hydro-dash.ino          Sketch entry, FreeRTOS task spawn
-├── config.h                Pins, intervals, FW_VERSION, max devices
+├── config.h                Pins, intervals, FW_VERSION, BLE tunables
 ├── state.{cpp,h}           DeviceRecord struct, atomic globals, mutex
 ├── device_id.{cpp,h}       Per-MAC unique hostname helper
-├── prefs.{cpp,h}           NVS: brightness, rotation, manual hosts, aliases
+├── prefs.{cpp,h}           NVS: brightness, rotation, cycle, units, hosts, aliases
 ├── backlight.{cpp,h}       LDR-driven PWM auto-dim
 ├── ui.{cpp,h}              LovyanGFX panel config + screen state machine
 ├── ui_hero.{cpp,h}         Hero view + status-dot strip
@@ -108,10 +124,16 @@ hydro-dash/
 ├── wifi_setup.{cpp,h}      WiFiManager AP-mode onboarding
 ├── discovery.{cpp,h}       mDNS browse + /sensors probe
 ├── poller.{cpp,h}          HTTP polling task
-├── http_server.{cpp,h}     Management API
+├── ble_scanner.{cpp,h}     Passive BLE scan for Govee H5075 sensors
+├── http_server.{cpp,h}     Management API + settings SPA
+├── ota.{cpp,h}             Browser-driven firmware update
+├── web/index.html          Settings SPA source
+├── web_assets.h            Gzipped SPA embedded in PROGMEM (generated)
+├── tools/                  gen-web-assets.ps1 — regenerates web_assets.h
 ├── build.ps1, setup.ps1    arduino-cli wrappers
 ├── enclosure/              Parametric OpenSCAD snap-fit case + STLs
 ├── docs/hydro-dash-spec.md Full design + screen flow + changelog
+├── docs/govee-ble.md       Govee H5075 BLE advertisement format
 ├── docs/cyd-ldr-test/      Standalone LDR diagnostic sketch
 └── CLAUDE.md               Notes for Claude Code agents
 ```

@@ -93,6 +93,14 @@
     <button data-m=full onclick="setBl('full')">Full</button>
     <button data-m=dim  onclick="setBl('dim')">Dim</button>
   </div>
+  <label class=fld>Temperature unit</label>
+  <div class="row seg" id=tu>
+    <button data-u=auto onclick="setUnit('auto')">Auto</button>
+    <button data-u=celsius onclick="setUnit('celsius')">&deg;C</button>
+    <button data-u=fahrenheit onclick="setUnit('fahrenheit')">&deg;F</button>
+  </div>
+  <p class=muted>&ldquo;Auto&rdquo; shows each device in the unit it
+    reports; &deg;C / &deg;F convert every tile.</p>
   <label class=fld>Device display time</label>
   <div class=row>
     <select id=cycle onchange=setCycle()></select>
@@ -185,6 +193,8 @@ async function loadConfig() {
 
   document.querySelectorAll('#bl button').forEach(
     b => b.classList.toggle('on', b.dataset.m === cfg.brightness));
+  document.querySelectorAll('#tu button').forEach(
+    b => b.classList.toggle('on', b.dataset.u === cfg.temp_unit));
 
   const sel = $('#cycle');
   sel.innerHTML = '';
@@ -203,6 +213,12 @@ async function loadConfig() {
 }
 
 async function loadDevices() {
+  // Don't rebuild the list while a display-name field is focused — the
+  // rebuild replaces the <input> and would discard the unsaved text.
+  // Polling resumes on the next cycle once the field loses focus.
+  const active = document.activeElement;
+  if (active && active.classList.contains('alias')) return;
+
   let list;
   try {
     list = await (await fetch('/devices')).json();
@@ -257,6 +273,14 @@ async function setBl(mode) {
     await post('/config/brightness', { mode });
     await loadConfig();
     toast('Backlight: ' + mode);
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+async function setUnit(u) {
+  try {
+    await post('/config/units', { unit: u });
+    await loadConfig();
+    toast('Temperature unit: ' + u);
   } catch (e) { toast('Failed: ' + e.message); }
 }
 

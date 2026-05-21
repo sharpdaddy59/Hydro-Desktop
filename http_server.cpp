@@ -56,6 +56,11 @@ static void handle_devices_get() {
     // that the next call overwrites — wrap in String so ArduinoJson
     // copies the value now instead of storing the soon-stale pointer.
     o["alias"]      = String(prefs_alias_for(d.hostname));
+    // "http" = polled cores3-hydro; "ble" = passively-heard Govee H5075.
+    // For "ble" rows, ip/uptime_s/fails are not meaningful.
+    o["kind"]       = ((DeviceKind)d.device_kind.load() == DeviceKind::BLE)
+                          ? "ble" : "http";
+    o["mac"]        = d.mac;          // populated for BLE devices, "" for HTTP
     o["ip"]         = d.last_ip.toString();
     emit_float_or_null(o, "water_temp", d.water_temp.load());
     emit_float_or_null(o, "air_temp",   d.air_temp.load());
@@ -132,6 +137,14 @@ static void handle_config_get() {
   doc["cycle_seconds"] = prefs_cycle_seconds();
   doc["cycle_max"]     = CYCLE_SECONDS_MAX;
 
+  const char* tu = "auto";
+  switch (prefs_temp_unit()) {
+    case TEMP_UNIT_CELSIUS:    tu = "celsius";    break;
+    case TEMP_UNIT_FAHRENHEIT: tu = "fahrenheit"; break;
+    case TEMP_UNIT_AUTO: break;
+  }
+  doc["temp_unit"] = tu;
+
   JsonArray mh = doc.createNestedArray("manual_hosts");
   uint8_t n = prefs_manual_host_count();
   for (uint8_t i = 0; i < n; i++) mh.add(prefs_manual_host(i));
@@ -169,6 +182,23 @@ static void handle_config_cycle() {
   send_ok();
 }
 
+// POST /config/units — form arg unit=auto|celsius|fahrenheit. The hero
+// view resolves the display unit on every redraw, so bump the UI version
+// to apply the change immediately.
+static void handle_config_units() {
+  if (!s_server.hasArg("unit")) {
+    s_server.send(400, "text/plain", "need unit");
+    return;
+  }
+  String u = s_server.arg("unit");
+  if      (u == "auto")       prefs_set_temp_unit(TEMP_UNIT_AUTO);
+  else if (u == "celsius")    prefs_set_temp_unit(TEMP_UNIT_CELSIUS);
+  else if (u == "fahrenheit") prefs_set_temp_unit(TEMP_UNIT_FAHRENHEIT);
+  else { s_server.send(400, "text/plain", "bad unit"); return; }
+  state_bump_version();
+  send_ok();
+}
+
 // POST /config/alias — form args hostname=... & alias=... (empty alias
 // clears it). The hero view renders alias-or-hostname, so bump the UI
 // version to force a redraw with the new name.
@@ -194,6 +224,7 @@ void http_server_begin() {
   s_server.on("/config",            HTTP_GET,  handle_config_get);
   s_server.on("/config/brightness", HTTP_POST, handle_config_brightness);
   s_server.on("/config/cycle",      HTTP_POST, handle_config_cycle);
+  s_server.on("/config/units",      HTTP_POST, handle_config_units);
   s_server.on("/config/alias",      HTTP_POST, handle_config_alias);
   s_server.on("/wifi/reset", HTTP_POST, []() {
     s_server.send(200, "text/plain",

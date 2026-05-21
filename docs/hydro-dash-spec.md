@@ -9,6 +9,49 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.13:** Temperature unit preference + tidied Govee tiles.
+  A new dashboard-wide temperature display unit — **Auto / °C / °F** —
+  is settable from the web settings console (segmented control in the
+  Display section, `POST /config/units`, surfaced in `GET /config`).
+  `Auto` keeps the original behavior (each tile shows whatever unit its
+  device reports); `°C` / `°F` convert every tile's temperatures (air
+  and water) at render time in `ui_hero.cpp`. Stored as the additive
+  `dash-ui` NVS key `units` — no `PREFS_SCHEMA` bump, units flashed
+  before it default to `Auto`. Conversion is display-only — the
+  dashboard still mirrors each device's reported reading; it just
+  presents it in the chosen unit. Separately, BLE (Govee H5075) tiles
+  now render a trimmed three-row layout — **Air, Humidity, Battery** —
+  instead of the four-row HTTP layout with its misleading `Water OFF` /
+  `Light OFF` rows. Battery percent comes from the H5075 advertisement
+  (already captured since v0.1.12, now shown); the rows are vertically
+  centered in the readings area. Also fixed a settings-SPA bug latent
+  since v0.1.10: the 5 s `/devices` poll rebuilt the device list from
+  scratch, so an in-progress display-name edit was discarded before it
+  could be saved — the rebuild now skips while an alias field is focused.
+- **v0.1.12:** Passive BLE sensor support — Govee H5075. New module
+  `ble_scanner.cpp` runs a low-duty-cycle passive BLE advertisement scan
+  (NimBLE-Arduino, scan-only — no pairing, no GATT connect) and surfaces
+  each Govee H5075 temperature/humidity sensor as an ordinary device in
+  the hero rotation, alongside the HTTP-polled cores3-hydro units. This
+  deliberately widens the dashboard's role: it is no longer a pure
+  consumer — it now also sources readings. The H5075's
+  manufacturer-specific advertisement carries a 24-bit big-endian packed
+  temp/humidity value plus a battery byte; `ble_scanner.cpp::decode_h5075`
+  decodes it (offsets per Home Assistant's `govee-ble` library and the
+  Theengs decoder — **verify against a real device**; a sanity gate drops
+  an implausible decode rather than painting garbage). `DeviceRecord`
+  gains a `device_kind` discriminator (HTTP/BLE) and a `mac` field; the
+  poller skips BLE entries (they have no IP), and the BLE scan task owns
+  their staleness — a tile that has not broadcast within
+  `BLE_STALE_AFTER_MS` (90 s) goes gray. BLE sensors render Water and
+  Light as `OFF`, Air and Humidity as live values. The scanner uses a
+  ~30% radio duty cycle (`BLE_SCAN_WINDOW_MS` < `BLE_SCAN_INTERVAL_MS`)
+  with a gap between windows so it does not starve WiFi on the WROOM-32's
+  shared 2.4 GHz radio; its task is pinned to core 0 alongside discovery.
+  `setup.ps1` gains `NimBLE-Arduino` (pinned to 2.x — the line compatible
+  with the arduino-esp32 3.x core; 1.4.x targets IDF 4.x and aborts at
+  boot). The BT controller is the feature's main RAM cost on
+  the no-PSRAM CYD. `/devices` JSON rows now carry `kind` and `mac`.
 - **v0.1.11:** Browser-driven firmware updates + JSON endpoint links.
   The settings SPA gains a Firmware section — pick a `.bin`, watch a
   progress bar, the device verifies the image and reboots into it —
@@ -292,13 +335,14 @@ no auth.
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/` | GET | Settings single-page app (gzipped, served from PROGMEM) |
-| `/devices` | GET | JSON snapshot of every known device |
+| `/devices` | GET | JSON snapshot of every known device (each row has `kind`: `http`\|`ble`, and `mac` for BLE rows) |
 | `/devices` | POST | Add a manual host (form: `hostname=...`) |
 | `/devices/remove` | POST | Drop a manual host from the persisted list (form: `hostname=...`) |
 | `/status` | GET | FW version, uptime, heap, device count |
 | `/config` | GET | Brightness mode, auto-cycle dwell, manual-host list |
 | `/config/brightness` | POST | Set backlight mode (form: `mode=auto\|full\|dim`) |
 | `/config/cycle` | POST | Set auto-cycle dwell seconds (form: `seconds=N`, 0–60) |
+| `/config/units` | POST | Set temperature display unit (form: `unit=auto\|celsius\|fahrenheit`) |
 | `/config/alias` | POST | Set/clear a device display name (form: `hostname=...&alias=...`) |
 | `/wifi/reset` | POST | Wipe creds and reboot to AP mode |
 | `/rebrowse` | POST | Force an mDNS rebrowse |
@@ -310,7 +354,7 @@ Each is single-purpose so a wipe-one-thing user action doesn't hit unrelated sta
 
 | Namespace | Holds |
 |-----------|-------|
-| `dash-ui` | brightness mode, rotation, auto-cycle dwell seconds |
+| `dash-ui` | brightness mode, rotation, auto-cycle dwell seconds, temperature unit |
 | `dash-hosts` | manually-added cores3-hydro hostnames |
 | `dash-alias` | per-hostname display alias |
 | `dash-touch` | XPT2046 calibration matrix |
@@ -330,3 +374,13 @@ WiFiManager owns its own NVS keys and is intentionally not surfaced here.
   needs a server-side aggregator if we want anything > a few minutes).
 - **Screen rotation auto-detect** via the accelerometer? CYD doesn't
   have one — skip.
+- **Remove a dead BLE sensor without a reboot.** `g_devices` is
+  append-only by design (the UI task reads it lockless), so a Govee
+  sensor that is unplugged, relocated out of range, or whose battery
+  dies stays as a permanently-stale tile until reboot — and keeps
+  consuming one of the `MAX_DEVICES` slots.
+- **More BLE sensor models** (Govee H5074/H5102/H5179, ThermoPro …).
+  `decode_h5075` is model-specific; generalizing means a decoder
+  dispatch keyed on company ID + payload length/shape. See
+  `docs/govee-ble.md` for the H5075 wire format and the steps to add a
+  model.

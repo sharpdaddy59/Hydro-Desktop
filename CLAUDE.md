@@ -135,11 +135,59 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
   HTTP API; the dashboard is LAN-trusted by design.
 - Don't bump `FW_VERSION` without updating the spec changelog.
 - Don't drag in an OS abstraction layer. ArduinoJson + HTTPClient +
-  LovyanGFX + WiFiManager is the surface area; keep it small.
+  LovyanGFX + WiFiManager + NimBLE-Arduino is the surface area; keep it
+  small.
 
 ## Recent state
 
-- **v0.1.11 (current):** Browser-driven firmware updates. New module
+- **v0.1.13 (current):** Temperature unit preference + trimmed Govee
+  tiles. New dashboard-wide temp display unit (Auto / °C / °F) — NVS
+  pref `units` in `dash-ui` (additive key, no `PREFS_SCHEMA` bump),
+  `prefs_temp_unit()`, set via `POST /config/units` and the settings
+  SPA's Display section. `ui_hero.cpp` converts air/water temperatures
+  at render time (`convert_temp` / `display_temp_unit`); `Auto` keeps
+  the original mirror-the-device behavior. Conversion is display-only —
+  doesn't touch the stateless-mirror stance. BLE (Govee) tiles now
+  render a trimmed three-row layout (Air / Humidity / Battery, centered)
+  instead of the HTTP four-row layout — the `reading()` lambda now takes
+  an explicit `y` and `draw_hero` branches on `device_kind`. Battery %
+  comes from the H5075 advertisement. The web device list still shows
+  each device's *reported* unit (it's a raw-data view); the unit pref
+  only affects the on-screen hero tiles. Also fixed a settings-SPA bug
+  latent since v0.1.10 — the 5 s `/devices` poll rebuilt the device
+  list and discarded in-progress display-name edits; `loadDevices()`
+  now skips the rebuild while an alias `<input>` is focused.
+- **v0.1.12:** Passive BLE sensor support — Govee H5075. New
+  module `ble_scanner.cpp` / `.h` runs a low-duty-cycle passive BLE
+  advertisement scan via NimBLE-Arduino (scan-only — no pairing, no GATT
+  connect) and surfaces each Govee H5075 temp/humidity sensor as an
+  ordinary `DeviceRecord` in the hero rotation, next to the HTTP-polled
+  cores3-hydro units. This is a deliberate, user-approved widening of the
+  dashboard's role — it now *sources* readings, not just consumes them.
+  `DeviceRecord` gains a `device_kind` discriminator (HTTP/BLE) and a
+  `mac` field; `state_insert_ble()` is the BLE insert path (existing
+  `state_insert()` untouched, so discovery/http_server need no edits).
+  The poller skips `DeviceKind::BLE` entries — they have no IP — and the
+  BLE scan task owns their staleness (`age_ble_devices` grays a tile
+  unheard for `BLE_STALE_AFTER_MS`). The `set_if_changed` /
+  `set_float_if_changed` helpers moved from `poller.cpp` statics to
+  `inline` in `state.h` since both producers now need them. The H5075
+  decoder (`decode_h5075`) reads a 24-bit big-endian packed temp/humidity
+  value + battery byte from the manufacturer-specific advertisement;
+  **offsets and the `0xEC88` company ID need real-device verification** —
+  a sanity gate drops an implausible decode. BLE sensors render Water and
+  Light as `OFF`. Scan duty cycle is ~30% (`BLE_SCAN_WINDOW_MS` <
+  `BLE_SCAN_INTERVAL_MS`) with a gap between windows so BLE listening
+  doesn't starve WiFi on the WROOM-32's shared radio; the task is pinned
+  to core 0 alongside discovery. `NimBLE-Arduino` is pinned to 2.5.0 in
+  `setup.ps1` — the 2.x line is the one compatible with the arduino-esp32
+  3.x core (IDF 5.x); 1.4.x compiles but aborts at boot in
+  `esp_bt_controller_init()`. The BT controller is
+  the feature's main RAM cost on the no-PSRAM CYD; measure free heap via
+  `/status`. `/devices` JSON rows gained `kind` and `mac`. Append-only
+  `g_devices` means a dead BLE sensor can't be removed without a reboot
+  (tracked in the spec's open work).
+- **v0.1.11:** Browser-driven firmware updates. New module
   `ota.cpp` / `ota.h` registers `POST /ota/upload` — a multipart
   firmware upload streamed straight to the `Update` library.
   `ota_register(s_server)` is called from `http_server_begin()`. The
@@ -284,5 +332,7 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 - `ui.cpp` — LovyanGFX panel config (pin numbers come from `config.h`)
 - `poller.cpp` — HTTP polling task; the `/sensors` contract lives here
 - `discovery.cpp` — mDNS browse + manual-host seeding
+- `ble_scanner.cpp` — passive BLE scan for Govee H5075 sensors;
+  wire format documented in `docs/govee-ble.md`
 - `http_server.cpp` / `web/index.html` — management HTTP API + settings SPA
 - `ota.cpp` — browser-driven firmware update (`POST /ota/upload`)

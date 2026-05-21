@@ -18,6 +18,7 @@ static constexpr uint8_t PREFS_SCHEMA = 6;
 static BrightnessMode s_mode  = BRIGHTNESS_AUTO;
 static uint8_t        s_rot   = 4;            // CYD landscape (panel swap + offset_y=80 in ui.cpp)
 static uint8_t        s_cycle = CYCLE_SECONDS_DEFAULT;  // auto-cycle dwell, seconds
+static TempUnitPref   s_units = TEMP_UNIT_AUTO;         // temperature display unit
 static std::vector<std::string> s_manual_hosts;
 
 static void load_manual_hosts() {
@@ -56,10 +57,12 @@ void prefs_load() {
     s_mode  = BRIGHTNESS_AUTO;
     s_rot   = 4;
     s_cycle = CYCLE_SECONDS_DEFAULT;
+    s_units = TEMP_UNIT_AUTO;
     s_ui.begin("dash-ui", false);
     s_ui.putUChar("mode",   (uint8_t)s_mode);
     s_ui.putUChar("rot",    s_rot);
     s_ui.putUChar("cycle",  s_cycle);
+    s_ui.putUChar("units",  (uint8_t)s_units);
     s_ui.putUChar("schema", PREFS_SCHEMA);
     s_ui.end();
   } else {
@@ -69,6 +72,8 @@ void prefs_load() {
     // "cycle" is an additive key (v0.1.10). Units flashed before it
     // existed simply read the default here — no schema bump needed.
     s_cycle = s_ui.getUChar("cycle", CYCLE_SECONDS_DEFAULT);
+    // "units" is an additive key (v0.1.13) — same story, default AUTO.
+    s_units = (TempUnitPref)s_ui.getUChar("units", TEMP_UNIT_AUTO);
     s_ui.end();
   }
   load_manual_hosts();
@@ -79,6 +84,7 @@ void prefs_save() {
   s_ui.putUChar("mode",  (uint8_t)s_mode);
   s_ui.putUChar("rot",   s_rot);
   s_ui.putUChar("cycle", s_cycle);
+  s_ui.putUChar("units", (uint8_t)s_units);
   s_ui.end();
 }
 
@@ -91,6 +97,13 @@ uint8_t prefs_cycle_seconds() { return s_cycle; }
 void    prefs_set_cycle_seconds(uint8_t s) {
   if (s > CYCLE_SECONDS_MAX) s = CYCLE_SECONDS_MAX;
   s_cycle = s;
+  prefs_save();
+}
+
+TempUnitPref prefs_temp_unit() { return s_units; }
+void         prefs_set_temp_unit(TempUnitPref u) {
+  if (u > TEMP_UNIT_FAHRENHEIT) u = TEMP_UNIT_AUTO;
+  s_units = u;
   prefs_save();
 }
 

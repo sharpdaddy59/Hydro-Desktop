@@ -3,7 +3,7 @@
 # Idempotent — safe to re-run. Installs:
 #   - arduino-cli itself (via winget) if missing
 #   - The mainstream esp32:esp32 core (no M5Stack fork needed for CYD)
-#   - Required libraries (LovyanGFX, WiFiManager, ArduinoJson)
+#   - Required libraries (LovyanGFX, WiFiManager, ArduinoJson, NimBLE-Arduino)
 #
 # Run once after cloning. After this completes, .\build.ps1 is the daily
 # entry point.
@@ -44,6 +44,12 @@ $libs = @(
     'LovyanGFX'
     'WiFiManager'
     'ArduinoJson'
+    # NimBLE-Arduino — passive BLE advertisement scan (Govee H5075 sensors).
+    # Pinned to the 2.x line: it is the version compatible with the
+    # arduino-esp32 3.x core (ESP-IDF 5.x) installed above. The 1.4.x line
+    # targets IDF 4.x — it compiles against a 3.x core but aborts at boot
+    # in esp_bt_controller_init(). ble_scanner.cpp uses the 2.x scan API.
+    'NimBLE-Arduino@2.5.0'
 )
 foreach ($lib in $libs) {
     Write-Host "[setup] Installing library: $lib"

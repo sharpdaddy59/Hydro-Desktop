@@ -8,6 +8,7 @@
 
 #include <atomic>
 #include <cstring>
+#include <cmath>
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
@@ -29,6 +30,15 @@ enum class SensorMode : uint8_t {
 enum class TempUnit : uint8_t {
   CELSIUS    = 0,
   FAHRENHEIT = 1,
+};
+
+// How a device's data arrives. HTTP devices are polled by poller.cpp over
+// the LAN; BLE devices are heard passively by ble_scanner.cpp. The poller
+// skips BLE entries (they have no IP); the BLE scan task owns their
+// staleness. Stored as uint8_t on DeviceRecord so the atomic is lock-free.
+enum class DeviceKind : uint8_t {
+  HTTP = 0,   // cores3-hydro, polled over LAN HTTP
+  BLE  = 1,   // Govee H5075, heard via BLE advertisement broadcast
 };
 
 inline SensorMode sensor_mode_from_str(const char* s) {
@@ -53,9 +63,11 @@ inline const char* temp_unit_suffix(TempUnit u) {
 
 struct DeviceRecord {
   // Identity
-  char hostname[48];          // e.g. "cores3-hydro-a3f2"
+  char hostname[48];          // e.g. "cores3-hydro-a3f2" or "govee-a3f2c1"
   char alias[32];             // user-friendly name from prefs (optional)
-  IPAddress last_ip;          // cached resolution; 0.0.0.0 if unknown
+  IPAddress last_ip;          // cached resolution; 0.0.0.0 if unknown (HTTP)
+  char mac[18];               // "AA:BB:CC:DD:EE:FF" — BLE devices only; "" for HTTP
+  std::atomic<uint8_t> device_kind;   // DeviceKind; write-once at insert
 
   // Latest /sensors readings (NaN if never received).
   std::atomic<float> water_temp;
@@ -90,6 +102,30 @@ struct DeviceRecord {
   std::atomic<bool> has_data;
 };
 
+// Store v into dst only if it differs from the current value. Returns true
+// iff a write happened — callers OR this into a `changed` flag and only
+// bump the UI version when something visible actually moved. Without this,
+// a poll/scan that yielded identical readings still triggered a full hero
+// redraw, seen by the user as a periodic flash. Shared by poller.cpp and
+// ble_scanner.cpp.
+template <typename T>
+inline bool set_if_changed(std::atomic<T>& dst, T v) {
+  T old = dst.load();
+  if (old == v) return false;
+  dst.store(v);
+  return true;
+}
+
+// NaN-aware float variant: treat NaN→NaN as no-change. Without this a
+// disabled/absent reading (value is NaN every refresh) would register as a
+// change on every comparison since NaN != NaN per IEEE 754.
+inline bool set_float_if_changed(std::atomic<float>& dst, float v) {
+  float old = dst.load();
+  if ((isnan(old) && isnan(v)) || old == v) return false;
+  dst.store(v);
+  return true;
+}
+
 // Globals — defined in state.cpp (or an early translation unit).
 extern DeviceRecord    g_devices[MAX_DEVICES];
 extern std::atomic<uint8_t> g_device_count;
@@ -104,5 +140,6 @@ extern std::atomic<uint32_t> g_state_version;
 // Helpers (state.cpp)
 void state_init();
 int  state_find_by_hostname(const char* hostname);   // -1 if not found
-int  state_insert(const char* hostname);             // -1 if MAX_DEVICES reached
+int  state_insert(const char* hostname);             // HTTP device; -1 if full
+int  state_insert_ble(const char* hostname, const char* mac);  // BLE device; -1 if full
 void state_bump_version();                            // invalidate UI cache

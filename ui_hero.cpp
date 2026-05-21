@@ -58,6 +58,26 @@ static void advance_focus() {
   s_focused = (s_focused + 1) % n;
 }
 
+// Resolve the unit a device's temperatures should be DISPLAYED in, given
+// the dashboard-wide preference. AUTO keeps each device's reported unit
+// (the original behavior); CELSIUS/FAHRENHEIT override it.
+static TempUnit display_temp_unit(TempUnit reported) {
+  switch (prefs_temp_unit()) {
+    case TEMP_UNIT_CELSIUS:    return TempUnit::CELSIUS;
+    case TEMP_UNIT_FAHRENHEIT: return TempUnit::FAHRENHEIT;
+    case TEMP_UNIT_AUTO:
+    default:                   return reported;
+  }
+}
+
+// Convert a temperature between units for display. NaN (no reading) and a
+// no-op conversion pass straight through.
+static float convert_temp(float v, TempUnit from, TempUnit to) {
+  if (isnan(v) || from == to) return v;
+  return (to == TempUnit::FAHRENHEIT) ? v * 9.0f / 5.0f + 32.0f
+                                      : (v - 32.0f) * 5.0f / 9.0f;
+}
+
 static void draw_strip(bool full_redraw) {
   auto& g = ui_gfx();
   int W = g.width();
@@ -150,11 +170,14 @@ static void draw_hero(bool full_redraw) {
   // wobble between digits.
   const int VALUE_BAND_W  = 140;
   bool stale = d.stale.load();
-  const char* tsuf = temp_unit_suffix((TempUnit)d.temp_unit.load());
+  // Source unit is what the device reports; display unit honors the
+  // dashboard-wide preference. Water/Air values are converted below.
+  TempUnit src  = (TempUnit)d.temp_unit.load();
+  TempUnit disp = display_temp_unit(src);
+  const char* tsuf = temp_unit_suffix(disp);
 
-  auto reading = [&](int line, const char* label, float v, const char* unit,
+  auto reading = [&](int y, const char* label, float v, const char* unit,
                      SensorMode mode) {
-    int y = HERO_LINE0_Y + line * HERO_LINE_DY;
     bool disabled  = (mode == SensorMode::OFF);
     bool simulated = (mode == SensorMode::SIMULATED);
     // uint16_t (not uint32_t!) so LovyanGFX treats the value as
@@ -190,10 +213,29 @@ static void draw_hero(bool full_redraw) {
   SensorMode m_air   = (SensorMode)d.mode_air.load();
   SensorMode m_water = (SensorMode)d.mode_water.load();
   SensorMode m_light = (SensorMode)d.mode_light.load();
-  reading(0, "Water",    d.water_temp.load(), tsuf, m_water);
-  reading(1, "Air",      d.air_temp.load(),   tsuf, m_air);
-  reading(2, "Humidity", d.humidity.load(),   "%",  m_air);
-  reading(3, "Light",    d.light.load(),      "",   m_light);
+
+  if ((DeviceKind)d.device_kind.load() == DeviceKind::BLE) {
+    // BLE sensors (Govee H5075) carry only air temp, humidity and
+    // battery. Show those three, vertically centered in the readings
+    // area — no misleading "Water OFF" / "Light OFF" rows.
+    int y = HERO_LINE0_Y + HERO_LINE_DY / 2;
+    reading(y, "Air", convert_temp(d.air_temp.load(), src, disp), tsuf, m_air);
+    reading(y + HERO_LINE_DY, "Humidity", d.humidity.load(), "%", m_air);
+    // Battery — REAL mode so it renders green; "--" when not yet known
+    // (battery_pct is -1 until the first advertisement is decoded).
+    int bp = d.battery_pct.load();
+    reading(y + 2 * HERO_LINE_DY, "Battery",
+            (bp >= 0) ? (float)bp : NAN, "%", SensorMode::REAL);
+  } else {
+    reading(HERO_LINE0_Y + 0 * HERO_LINE_DY, "Water",
+            convert_temp(d.water_temp.load(), src, disp), tsuf, m_water);
+    reading(HERO_LINE0_Y + 1 * HERO_LINE_DY, "Air",
+            convert_temp(d.air_temp.load(), src, disp), tsuf, m_air);
+    reading(HERO_LINE0_Y + 2 * HERO_LINE_DY, "Humidity",
+            d.humidity.load(), "%", m_air);
+    reading(HERO_LINE0_Y + 3 * HERO_LINE_DY, "Light",
+            d.light.load(), "", m_light);
+  }
 
   // Footer: status details up top, hostname on its own line at the
   // bottom (size 2 so it's legible from desk distance) — multiple CYDs

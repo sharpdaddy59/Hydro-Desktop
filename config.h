@@ -8,7 +8,7 @@
 
 #pragma once
 
-#define FW_VERSION       "0.1.11"
+#define FW_VERSION       "0.1.13"
 
 // ---------------------------------------------------------------------------
 // Display (ILI9341, HSPI bus, 240x320 portrait native -> rotated to 320x240)
@@ -56,6 +56,24 @@
 #define STALE_AFTER_MISSES       3     // gray a tile after N consecutive failures
 
 #define MDNS_FILTER_PREFIX       "cores3-hydro-"
+
+// ---------------------------------------------------------------------------
+// BLE sensor scanning (Govee H5075 — passive advertisement scan, no pairing)
+//
+// The CYD's ESP32-WROOM-32 shares one 2.4 GHz radio between WiFi and BLE.
+// SCAN_WINDOW < SCAN_INTERVAL keeps the controller's scan duty cycle low
+// (~30%) so BLE listening does not starve the WiFi poller. The H5075
+// re-broadcasts every ~2 s, so even a low duty cycle catches it quickly.
+// ---------------------------------------------------------------------------
+#define BLE_SCAN_DURATION_S      6      // length of one scan window
+#define BLE_SCAN_GAP_MS          4000   // idle gap between windows (WiFi breather)
+#define BLE_SCAN_INTERVAL_MS     160    // controller scan interval
+#define BLE_SCAN_WINDOW_MS       48     // controller scan window (< interval)
+#define BLE_STALE_AFTER_MS       90000  // gray a BLE tile unheard this long
+#define BLE_NAME_PREFIX          "GVH5075"
+// First two bytes of the H5075's manufacturer-specific AD data, little-endian.
+// VERIFY against a real device — Govee has shipped multiple H5075 revisions.
+#define GOVEE_H5075_COMPANY_ID   0xEC88
 
 // AP mode (WiFiManager fallback when no creds saved). The SSID is
 // built at runtime as "<device_hostname>-setup" so multiple units being
