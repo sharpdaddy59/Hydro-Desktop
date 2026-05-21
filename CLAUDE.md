@@ -88,9 +88,12 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
    axis. The locked-in config doesn't need flipping, but the hook is
    left in place so a future panel-config change can reinstate the
    flip without touching every draw call.
-7. **GitHub Actions Node 20 deprecation warning** is the same as in
-   cores3-hydro — non-blocking, will resolve when the action authors
-   ship Node 24 majors.
+7. **GitHub Actions Node runtime.** The release workflow's actions are
+   pinned to their Node-24 majors (`checkout@v5`, `cache@v5`,
+   `action-gh-release@v3`) — except `arduino/setup-arduino-cli@v2`,
+   which has no Node-24 release yet. GitHub force-runs any remaining
+   Node-20 action on the Node 24 runtime from 2026-06-02; bump
+   `setup-arduino-cli` once Arduino ships a Node-24 version.
 
 ## Conventions for new work
 
