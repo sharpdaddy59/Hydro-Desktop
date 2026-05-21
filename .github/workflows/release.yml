@@ -38,8 +38,11 @@ jobs:
 
       - name: Install libraries
         run: |
+          # Keep this list in sync with setup.ps1. NimBLE-Arduino is
+          # pinned to 2.x — the line compatible with the esp32:esp32 3.x
+          # core; 1.4.x compiles but aborts at boot.
           arduino-cli lib install \
-            "LovyanGFX" "WiFiManager" "ArduinoJson"
+            "LovyanGFX" "WiFiManager" "ArduinoJson" "NimBLE-Arduino@2.5.0"
 
       - name: Compile
         working-directory: hydro-dash
