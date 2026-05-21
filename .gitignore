@@ -5,4 +5,5 @@ dist/
 *.map
 *.log
 .vscode/
+.claude/
 .DS_Store
