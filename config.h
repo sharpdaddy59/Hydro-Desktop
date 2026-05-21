@@ -8,7 +8,7 @@
 
 #pragma once
 
-#define FW_VERSION       "0.1.16"
+#define FW_VERSION       "0.1.17"
 
 // ---------------------------------------------------------------------------
 // Display (ILI9341, HSPI bus, 240x320 portrait native -> rotated to 320x240)
@@ -74,10 +74,10 @@
 #define SD_MOSI            23
 #define SD_MISO            19
 #define SD_CS              5
-#define SD_SPI_FREQ_HZ     4000000      // conservative SD SPI clock
-#define SD_LOG_PREFIX      "/hydro-"    // dated log files: /hydro-YYYY-MM-DD.csv
+#define SD_SPI_FREQ_HZ     20000000     // SD bus clock — SD owns VSPI; 20 MHz is safe on the CYD
+#define SD_LOG_PREFIX      "/hydro-"    // dated log files: /hydro-YYYY-MM.csv
 #define SD_LOG_FILENAME    "/hydro-log.csv"  // pre-NTP fallback (before the clock is set)
-#define SD_LOG_INTERVAL_MS 60000        // append a row per device once a minute
+#define SD_LOG_INTERVAL_MS 300000       // append a row per device every 5 minutes
 
 // NTP — UTC wall-clock for the CSV timestamp column. Falls back to
 // uptime-seconds until the first sync (the LAN may have no internet).

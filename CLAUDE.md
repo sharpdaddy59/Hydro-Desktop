@@ -133,7 +133,14 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Recent state
 
-- **v0.1.16 (current):** Daily SD-log rotation + browser log download.
+- **v0.1.17 (current):** SD-log tuning. Rotation switched from daily to
+  **monthly** files (`/hydro-YYYY-MM.csv` — `current_log_path` formats
+  `%Y-%m`); the log interval went 1 min → 5 min (`SD_LOG_INTERVAL_MS`);
+  and `SD_SPI_FREQ_HZ` rose 4 → 20 MHz (the SD card has VSPI to itself
+  now that touch is gone). A monthly file is ~3 MB and downloads in
+  ~2–3 s. Three `config.h` constants and one `strftime` format — no
+  code-path changes.
+- **v0.1.16:** Daily SD-log rotation + browser log download.
   `sdlog.cpp` now writes one file per local day — `/hydro-YYYY-MM-DD.csv`
   (`current_log_path` computes it from the configured-timezone local
   date, so a file's day boundary matches its rows' timestamps).
@@ -371,4 +378,4 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
   wire format documented in `docs/govee-ble.md`
 - `http_server.cpp` / `web/index.html` — management HTTP API + settings SPA
 - `ota.cpp` — browser-driven firmware update (`POST /ota/upload`)
-- `sdlog.cpp` — microSD CSV data logging (daily `/hydro-YYYY-MM-DD.csv`)
+- `sdlog.cpp` — microSD CSV data logging (monthly `/hydro-YYYY-MM.csv`)

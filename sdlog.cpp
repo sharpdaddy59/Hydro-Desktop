@@ -1,7 +1,7 @@
 // sdlog.cpp — CSV data logging to the microSD card.
 //
 // Every SD_LOG_INTERVAL_MS, append one CSV row per device to a dated
-// file /hydro-YYYY-MM-DD.csv (one per local calendar day). The card is
+// file /hydro-YYYY-MM.csv (one per local calendar month). The card is
 // optional: if it is absent or the mount fails, sdlog_begin() disables
 // logging and the dashboard runs normally.
 //
@@ -79,17 +79,17 @@ static bool clock_synced() {
   return time(nullptr) > 1700000000;
 }
 
-// Fill `buf` with the log path for this cycle: /hydro-YYYY-MM-DD.csv
-// keyed on the LOCAL date once NTP has synced, or SD_LOG_FILENAME as the
+// Fill `buf` with the log path for this cycle: /hydro-YYYY-MM.csv keyed
+// on the LOCAL month once NTP has synced, or SD_LOG_FILENAME as the
 // fallback until then. localtime_r honors the TZ set by configTzTime /
-// sdlog_apply_timezone, so a file's day boundary matches the local date
-// in its rows' timestamps.
+// sdlog_apply_timezone, so a file's month boundary matches the local
+// date in its rows' timestamps.
 static void current_log_path(char* buf, size_t len) {
   if (clock_synced()) {
     time_t t = time(nullptr);
     struct tm lt;
     localtime_r(&t, &lt);
-    strftime(buf, len, SD_LOG_PREFIX "%Y-%m-%d.csv", &lt);
+    strftime(buf, len, SD_LOG_PREFIX "%Y-%m.csv", &lt);
   } else {
     strncpy(buf, SD_LOG_FILENAME, len - 1);
     buf[len - 1] = '\0';
@@ -123,9 +123,10 @@ void sdlog_loop() {
   uint8_t n = g_device_count.load();
   if (n == 0) return;   // nothing to log yet
 
-  // Today's file (a dated name once NTP has set the clock; the fallback
-  // file until then). Open / append / close per interval — no long-held
-  // handle, so a card yank can't corrupt the FAT and is detected here.
+  // The current month's file (a dated name once NTP has set the clock;
+  // the fallback file until then). Open / append / close per interval —
+  // no long-held handle, so a card yank can't corrupt the FAT and is
+  // detected here.
   char path[24];
   current_log_path(path, sizeof(path));
   bool is_new = !SD.exists(path);
@@ -135,7 +136,7 @@ void sdlog_loop() {
     s_active = false;
     return;
   }
-  if (is_new) f.println(CSV_HEADER);   // each day's file gets its own header
+  if (is_new) f.println(CSV_HEADER);   // each month's file gets its own header
 
   // Timestamp: ISO-8601 local time once NTP has synced, else empty.
   // UTC renders with a trailing Z; any other zone with a ±HH:MM offset.

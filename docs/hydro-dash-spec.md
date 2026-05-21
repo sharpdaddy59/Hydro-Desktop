@@ -9,6 +9,19 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.17:** SD-log tuning — monthly files, 5-minute interval, faster
+  SD clock. The CSV log now rotates **monthly** (`/hydro-YYYY-MM.csv`)
+  rather than daily: for the insert-and-forget archival use, 12 files a
+  year keeps the `/logs` web list complete and quick — no realistic
+  truncation. The log interval goes from 1 to 5 minutes — water/air
+  temp, humidity and light move slowly, so 5-minute samples capture the
+  trend and cut file size 5× (the live screen is unaffected — it still
+  refreshes at the 15 s poll rate). And `SD_SPI_FREQ_HZ` rises 4 →
+  20 MHz: the conservative 4 MHz was leftover from when the SD card
+  shared the VSPI bus with the touchscreen, and at ~0.4 MB/s it made a
+  month's download a tens-of-seconds dashboard freeze. A monthly file is
+  now ~3 MB and downloads in a couple of seconds. Three `config.h`
+  constants and one `strftime` format — no code-path changes.
 - **v0.1.16:** Daily SD-log rotation + browser log download. The CSV log
   now rotates **per local day** — `sdlog.cpp` writes to
   `/hydro-YYYY-MM-DD.csv` (the date from the configured timezone), each
