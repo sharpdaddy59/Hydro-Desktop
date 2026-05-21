@@ -8,7 +8,7 @@
 
 #pragma once
 
-#define FW_VERSION       "0.1.13"
+#define FW_VERSION       "0.1.16"
 
 // ---------------------------------------------------------------------------
 // Display (ILI9341, HSPI bus, 240x320 portrait native -> rotated to 320x240)
@@ -26,15 +26,6 @@
 
 #define TFT_W            320
 #define TFT_H            240
-
-// ---------------------------------------------------------------------------
-// Touch (XPT2046, separate VSPI bus — shares VSPI with SD if SD ever used)
-// ---------------------------------------------------------------------------
-#define TOUCH_MOSI       32
-#define TOUCH_MISO       39
-#define TOUCH_SCLK       25
-#define TOUCH_CS         33
-#define TOUCH_IRQ        36
 
 // ---------------------------------------------------------------------------
 // On-board sensors / indicators
@@ -74,6 +65,23 @@
 // First two bytes of the H5075's manufacturer-specific AD data, little-endian.
 // VERIFY against a real device — Govee has shipped multiple H5075 revisions.
 #define GOVEE_H5075_COMPANY_ID   0xEC88
+
+// ---------------------------------------------------------------------------
+// microSD card — CSV data logging (sdlog.cpp). The card is wired to the
+// VSPI bus on its own GPIOs; VSPI is free since the touchscreen was removed.
+// ---------------------------------------------------------------------------
+#define SD_SCLK            18
+#define SD_MOSI            23
+#define SD_MISO            19
+#define SD_CS              5
+#define SD_SPI_FREQ_HZ     4000000      // conservative SD SPI clock
+#define SD_LOG_PREFIX      "/hydro-"    // dated log files: /hydro-YYYY-MM-DD.csv
+#define SD_LOG_FILENAME    "/hydro-log.csv"  // pre-NTP fallback (before the clock is set)
+#define SD_LOG_INTERVAL_MS 60000        // append a row per device once a minute
+
+// NTP — UTC wall-clock for the CSV timestamp column. Falls back to
+// uptime-seconds until the first sync (the LAN may have no internet).
+#define NTP_SERVER         "pool.ntp.org"
 
 // AP mode (WiFiManager fallback when no creds saved). The SSID is
 // built at runtime as "<device_hostname>-setup" so multiple units being

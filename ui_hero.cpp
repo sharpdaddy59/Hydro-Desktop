@@ -20,9 +20,8 @@ static constexpr int HERO_LINE_DY   = 28;
 static constexpr int RIGHT_PAD      = 8;
 
 // Cycle behavior. The dwell interval is a user preference
-// (prefs_cycle_seconds); 0 disables auto-cycling entirely.
+// (prefs_cycle_seconds); 0 disables auto-cycling (holds on device 0).
 static int8_t   s_focused        = 0;
-static bool     s_paused         = false;
 static uint32_t s_last_cycle_ms  = 0;
 
 // Snapshot of the screen-state inputs that determine whether the last
@@ -33,7 +32,6 @@ static uint32_t s_last_cycle_ms  = 0;
 // for why we redraw in place between page transitions instead of
 // re-clearing the whole region every time.
 static int8_t s_last_drawn_focused = -1;
-static int8_t s_last_drawn_paused  = -1;
 static int8_t s_last_drawn_count   = -1;
 
 // uint16_t (not uint32_t) so LovyanGFX's color path treats values as
@@ -83,11 +81,9 @@ static void draw_strip(bool full_redraw) {
   int W = g.width();
   uint8_t n = g_device_count.load();
 
-  // Full clear only on a page transition (focus/pause/count change).
-  // On in-place updates the dots overwrite their prior pixels via
-  // fillCircle; the PAUSED text can't have changed (pause is part of
-  // the full_redraw trigger) so it remains correct on the framebuffer.
-  // All Y values via FY() since the canvas Y axis is inverted.
+  // Full clear only on a page transition (focus/count change). On
+  // in-place updates the dots overwrite their prior pixels via
+  // fillCircle. All Y values via FY() since the canvas Y axis is inverted.
   if (full_redraw) {
     g.fillRect(0, FY(0, STRIP_H), W, STRIP_H, TFT_BLACK);
     g.drawFastHLine(0, FY(STRIP_H - 1), W, 0x4208);
@@ -111,13 +107,6 @@ static void draw_strip(bool full_redraw) {
     int cy = FY(STRIP_DOT_Y);
     g.fillCircle(cx, cy, radius, status_color(g_devices[i]));
     if (i == s_focused) g.drawCircle(cx, cy, radius + 2, TFT_WHITE);
-  }
-
-  if (full_redraw && s_paused) {
-    g.setTextSize(1);
-    g.setTextColor(TFT_YELLOW, TFT_BLACK);
-    g.setCursor(W - 56, FY(4, 8));
-    g.print("PAUSED");
   }
 }
 
@@ -268,7 +257,6 @@ static void draw_hero(bool full_redraw) {
 }
 
 void ui_hero_tick() {
-  if (s_paused) return;
   if (g_device_count.load() < 2) return;  // nothing to cycle to
   uint8_t secs = prefs_cycle_seconds();
   if (secs == 0) return;                   // auto-cycle disabled by the user
@@ -279,47 +267,17 @@ void ui_hero_tick() {
 }
 
 void ui_hero_draw() {
-  // A "page transition" is any change in which device is shown, the
-  // pause state (the PAUSED text appears/disappears), or the device
-  // count (dot layout / "waiting" text). Anything else — RSSI drift,
-  // sensor decimal-place changes, sim-mode toggles upstream — is an
-  // in-place refresh that should be visually silent.
+  // A "page transition" is a change in which device is shown or in the
+  // device count (dot layout / "waiting" text). Anything else — RSSI
+  // drift, sensor decimal-place changes, sim-mode toggles upstream — is
+  // an in-place refresh that should be visually silent.
   int8_t now_count = (int8_t)g_device_count.load();
-  bool full_redraw = (s_focused          != s_last_drawn_focused) ||
-                     ((int8_t)s_paused   != s_last_drawn_paused)  ||
-                     (now_count          != s_last_drawn_count);
+  bool full_redraw = (s_focused != s_last_drawn_focused) ||
+                     (now_count != s_last_drawn_count);
 
   draw_strip(full_redraw);
   draw_hero(full_redraw);
 
   s_last_drawn_focused = s_focused;
-  s_last_drawn_paused  = (int8_t)s_paused;
   s_last_drawn_count   = now_count;
-}
-
-void ui_hero_handle_touch(int16_t x, int16_t y) {
-  // Touch coords come back in canvas Y, which now matches our logical Y
-  // (FY is an identity passthrough). Hit-region checks below work as-is.
-  uint8_t n = g_device_count.load();
-
-  if (y < STRIP_H && n > 0) {
-    // Map x to a dot index. Tolerate sloppy taps — anything closer to
-    // dot i than to its neighbors counts as i.
-    int W = ui_gfx().width();
-    int spacing = W / (n + 1);
-    int idx = (x + spacing / 2) / spacing - 1;
-    if (idx < 0) idx = 0;
-    if (idx >= n) idx = n - 1;
-    s_focused = (int8_t)idx;
-    s_paused  = true;
-    s_last_cycle_ms = millis();
-    state_bump_version();
-    return;
-  }
-
-  // Hero area: toggle pause. Reset the cycle timer so an unpause doesn't
-  // immediately advance off the device the user wanted to read.
-  s_paused = !s_paused;
-  s_last_cycle_ms = millis();
-  state_bump_version();
 }

@@ -2,18 +2,15 @@
 //
 // Top 30 px: one colored dot per known device (green=fresh, yellow=sim,
 // gray=stale/no-data); the focused device's dot has a white highlight ring.
-// Tap a dot to focus + pause cycling.
 //
-// Below: large readings for the focused device.
-// Tap the hero area to toggle pause; long-press opens Settings (handled
-// upstream in ui.cpp).
+// Below: large readings for the focused device. The view auto-cycles
+// through devices on a timer (prefs_cycle_seconds; 0 holds on device 0).
 
 #pragma once
 
 #include <Arduino.h>
 
 void ui_hero_draw();
-void ui_hero_handle_touch(int16_t x, int16_t y);
 
 // Tick the auto-cycle timer. Called from ui_loop on every iteration so
 // the cycle advances even when the renderer is short-circuited by the

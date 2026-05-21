@@ -1,4 +1,4 @@
-// ui.cpp — LovyanGFX panel + screen state machine.
+// ui.cpp — LovyanGFX panel config + hero-view render loop.
 //
 // Hand-rolled panel config for the Sunton ESP32-2432S028R. We tried
 // LovyanGFX's autodetect path; on this specific board it produced a
@@ -8,7 +8,6 @@
 #define LGFX_USE_V1
 #include "ui.h"
 #include "ui_hero.h"
-#include "ui_settings.h"
 #include "state.h"
 #include "config.h"
 #include "prefs.h"
@@ -18,7 +17,6 @@ class LGFX_CYD : public lgfx::LGFX_Device {
   // auto-dim policy), so no Light_* instance is configured here.
   lgfx::Panel_ILI9341   _panel;
   lgfx::Bus_SPI         _bus;
-  lgfx::Touch_XPT2046   _touch;
 
 public:
   LGFX_CYD() {
@@ -62,30 +60,11 @@ public:
       c.bus_shared       = false;
       _panel.config(c);
     }
-    {
-      auto c = _touch.config();
-      c.x_min      = 300;
-      c.x_max      = 3900;
-      c.y_min      = 300;
-      c.y_max      = 3900;
-      c.pin_int    = TOUCH_IRQ;
-      c.bus_shared = false;
-      c.offset_rotation = 0;
-      c.spi_host   = VSPI_HOST;
-      c.freq       = 1000000;
-      c.pin_sclk   = TOUCH_SCLK;
-      c.pin_mosi   = TOUCH_MOSI;
-      c.pin_miso   = TOUCH_MISO;
-      c.pin_cs     = TOUCH_CS;
-      _touch.config(c);
-      _panel.setTouch(&_touch);
-    }
     setPanel(&_panel);
   }
 };
 
 static LGFX_CYD          s_gfx;
-static UiScreen          s_screen = UI_SCREEN_HERO;
 static char              s_status[64] = {0};
 
 lgfx::LGFX_Device& ui_gfx() { return s_gfx; }
@@ -98,14 +77,6 @@ void ui_begin() {
   s_gfx.setTextSize(2);
 }
 
-void ui_set_screen(UiScreen s) {
-  s_screen = s;
-  s_gfx.fillScreen(TFT_BLACK);
-  state_bump_version();
-}
-
-UiScreen ui_current_screen() { return s_screen; }
-
 void ui_set_status(const char* msg) {
   strncpy(s_status, msg ? msg : "", sizeof(s_status) - 1);
   s_status[sizeof(s_status) - 1] = '\0';
@@ -113,10 +84,9 @@ void ui_set_status(const char* msg) {
 }
 
 void ui_loop() {
-  // Per-screen pre-render hooks (cycle timers, animations) need to run
-  // every iteration so they're not held off by the dirty-version skip
-  // below. Hero auto-cycle is the only one currently.
-  if (s_screen == UI_SCREEN_HERO) ui_hero_tick();
+  // The hero auto-cycle timer must tick every iteration so it isn't held
+  // off by the dirty-version skip below.
+  ui_hero_tick();
 
   // Skip the render entirely if nothing display-relevant has changed
   // since the last successful draw. This is what keeps the screen still
@@ -127,27 +97,11 @@ void ui_loop() {
   if (v == last_drawn_version) return;
   last_drawn_version = v;
 
-  switch (s_screen) {
-    case UI_SCREEN_HERO:     ui_hero_draw();     break;
-    case UI_SCREEN_SETTINGS: ui_settings_draw(); break;
-  }
+  ui_hero_draw();
 
   if (s_status[0]) {
     s_gfx.setTextColor(TFT_YELLOW, TFT_BLACK);
     s_gfx.setCursor(8, FY(s_gfx.height() - 24, 8));
     s_gfx.print(s_status);
   }
-}
-
-void ui_handle_touch(int16_t x, int16_t y) {
-  switch (s_screen) {
-    case UI_SCREEN_HERO:     ui_hero_handle_touch(x, y);     break;
-    case UI_SCREEN_SETTINGS: ui_settings_handle_touch(x, y); break;
-  }
-}
-
-void ui_handle_long_press(int16_t /*x*/, int16_t /*y*/) {
-  // Long-press toggles between hero and settings.
-  if (s_screen == UI_SCREEN_HERO)          ui_set_screen(UI_SCREEN_SETTINGS);
-  else if (s_screen == UI_SCREEN_SETTINGS) ui_set_screen(UI_SCREEN_HERO);
 }

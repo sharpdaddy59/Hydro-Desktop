@@ -36,6 +36,7 @@ USE_USB_C     = true;   // USB-C cutout on the short edge
 USE_MICRO_USB = false;   // Micro-USB cutout on the short edge
 USE_KICKSTAND = true;   // detachable rear kickstand + matching sockets
 USE_BACK_VENTS = false; // vents on back
+USE_SD_SLOT   = true;   // microSD card-access slot on the -Y long wall
 
 // =============================================================
 // PARAMETERS — tune these to match your board, your printer, and
@@ -89,6 +90,28 @@ MICRO_USB_HEIGHT     =  3.5;
 MICRO_USB_Y_CENTER   = 13.0;
 MICRO_USB_Z_OFFSET   = -2.0;
 USB_CUTOUT_SLACK     =  0.6;   // extra clearance around each USB cutout
+
+// ----- microSD card-access slot (on PCB -Y long edge) ---------
+// The CYD's microSD socket is surface-mounted on the BACK of the
+// PCB, so the card sits BELOW the PCB bottom surface — the same Z
+// band as the USB connectors. This slot cuts through the -Y long
+// wall so the card can be inserted/removed without opening the case.
+//
+// NOTE: the optional stylus channel (USE_STYLUS) also occupies the
+// -Y wall and runs its full length — don't enable both. The SD slot
+// would open into the stylus bore instead of the outside. If you
+// need the stylus, relocate SD access to a different edge.
+SD_SLOT_X_CENTER     = 48.0;   // MEASURE: PCB-local X of the socket mouth centre
+SD_SLOT_WIDTH        = 13.0;   // MEASURE: socket mouth width (card + metal shell)
+SD_SLOT_HEIGHT       =  2.2;   // MEASURE: card-access slot height (Z)
+SD_SLOT_Z_OFFSET     = -1.0;   // slot centre vs PCB BOTTOM surface (negative = below PCB)
+SD_CUTOUT_SLACK      =  0.8;   // extra clearance around the SD cutout
+// Finger-relief scoop — a shallow pocket recessed into the OUTER
+// wall face so a fingernail can reach a card sitting flush in the
+// socket. Set SD_RELIEF_WIDTH to 0 to omit it.
+SD_RELIEF_WIDTH      = 22.0;   // scoop width along the wall (0 = no scoop)
+SD_RELIEF_HEIGHT     =  5.0;   // scoop height (Z)
+SD_RELIEF_DEPTH      =  1.2;   // scoop depth into the wall
 
 // ----- LDR ----------------------------------------------------
 LDR_HOLE_DIAM        =  2.0;
@@ -369,6 +392,9 @@ module back_shell() {
         usb_cutout(MICRO_USB_Y_CENTER, MICRO_USB_WIDTH, MICRO_USB_HEIGHT,
                    MICRO_USB_Z_OFFSET);
 
+      // microSD card-access slot through the -Y long wall
+      if (USE_SD_SLOT) sd_cutout();
+
       // Stylus channel (subtractive) — drilled into the housing bump-out
       if (USE_STYLUS) stylus_channel();
 
@@ -403,6 +429,30 @@ module usb_cutout(y_center, w, h, z_offset) {
     cube([WALL + 1.5,
           w + USB_CUTOUT_SLACK,
           h + USB_CUTOUT_SLACK]);
+}
+
+// microSD card-access slot — runs through the -Y long wall.
+// Mirrors usb_cutout's approach: the slot pokes ~1 mm past the wall's
+// inner face so it joins the cavity cleanly, and is WALL+1.5 deep so
+// it clears the full wall thickness. An optional finger-relief scoop
+// is recessed into the outer face for cards that sit flush.
+module sd_cutout() {
+  w  = SD_SLOT_WIDTH  + SD_CUTOUT_SLACK;
+  h  = SD_SLOT_HEIGHT + SD_CUTOUT_SLACK;
+  cz = WALL + BACK_DEPTH + SD_SLOT_Z_OFFSET;   // slot centre Z
+
+  // Through-wall slot
+  translate([SD_SLOT_X_CENTER - w/2,
+             -WALL - PCB_PERIMETER_GAP - 0.5,
+             cz - h/2])
+    cube([w, WALL + 1.5, h]);
+
+  // Finger-relief scoop, recessed into the outer wall face
+  if (SD_RELIEF_WIDTH > 0)
+    translate([SD_SLOT_X_CENTER - SD_RELIEF_WIDTH/2,
+               -WALL - PCB_PERIMETER_GAP - 0.01,
+               cz - SD_RELIEF_HEIGHT/2])
+      cube([SD_RELIEF_WIDTH, SD_RELIEF_DEPTH + 0.01, SD_RELIEF_HEIGHT]);
 }
 
 // Stylus channel: housing bump on the -Y wall + drilled bore

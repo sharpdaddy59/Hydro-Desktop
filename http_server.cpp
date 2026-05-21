@@ -7,7 +7,9 @@
 #include "device_id.h"
 #include "web_assets.h"
 #include "ota.h"
+#include "sdlog.h"
 #include <WebServer.h>
+#include <FS.h>
 #include <ArduinoJson.h>
 #include <cmath>
 
@@ -144,6 +146,8 @@ static void handle_config_get() {
     case TEMP_UNIT_AUTO: break;
   }
   doc["temp_unit"] = tu;
+  doc["sdlog"]     = sdlog_active() ? "logging" : "no card";
+  doc["timezone"]  = prefs_timezone();
 
   JsonArray mh = doc.createNestedArray("manual_hosts");
   uint8_t n = prefs_manual_host_count();
@@ -199,6 +203,16 @@ static void handle_config_units() {
   send_ok();
 }
 
+// POST /config/timezone — form arg tz=<POSIX TZ string> ("" = UTC). The
+// value comes from the SPA's fixed zone dropdown; applied immediately so
+// the next logged CSV row picks it up.
+static void handle_config_timezone() {
+  String tz = s_server.hasArg("tz") ? s_server.arg("tz") : String();
+  prefs_set_timezone(tz.c_str());
+  sdlog_apply_timezone();
+  send_ok();
+}
+
 // POST /config/alias — form args hostname=... & alias=... (empty alias
 // clears it). The hero view renders alias-or-hostname, so bump the UI
 // version to force a redraw with the new name.
@@ -215,6 +229,48 @@ static void handle_config_alias() {
   send_ok();
 }
 
+// GET /logs — JSON list of the CSV log files on the SD card (name + size).
+struct LogListCtx { JsonArray* arr; int count; };
+static void log_list_cb(const char* name, uint32_t size, void* ctx) {
+  LogListCtx* c = (LogListCtx*)ctx;
+  if (c->count >= 180) return;          // bound the JSON document
+  JsonObject o = c->arr->createNestedObject();
+  o["name"] = String(name);             // copy now — `name` is transient
+  o["size"] = size;
+  c->count++;
+}
+static void handle_logs_get() {
+  static StaticJsonDocument<8192> doc;
+  JsonArray arr = doc.to<JsonArray>();
+  LogListCtx ctx{ &arr, 0 };
+  sdlog_list_files(log_list_cb, &ctx);   // empty array = no card / no files
+  send_json(200, doc);
+}
+
+// GET /logs/download?file=NAME — stream one log file as a CSV download.
+// `file` is untrusted: sdlog_is_log_filename() is the path-traversal gate
+// and runs before any SD access.
+static void handle_logs_download() {
+  if (!s_server.hasArg("file")) {
+    s_server.send(400, "text/plain", "need file");
+    return;
+  }
+  String name = s_server.arg("file");
+  if (!sdlog_is_log_filename(name.c_str())) {
+    s_server.send(400, "text/plain", "bad file");
+    return;
+  }
+  File f = sdlog_open_for_read(name.c_str());
+  if (!f) {
+    s_server.send(404, "text/plain", "not found");
+    return;
+  }
+  s_server.sendHeader("Content-Disposition",
+                      "attachment; filename=\"" + name + "\"");
+  s_server.streamFile(f, "text/csv");    // blocks the loop for the transfer
+  f.close();
+}
+
 void http_server_begin() {
   s_server.on("/",                  HTTP_GET,  handle_root);
   s_server.on("/devices",           HTTP_GET,  handle_devices_get);
@@ -225,7 +281,10 @@ void http_server_begin() {
   s_server.on("/config/brightness", HTTP_POST, handle_config_brightness);
   s_server.on("/config/cycle",      HTTP_POST, handle_config_cycle);
   s_server.on("/config/units",      HTTP_POST, handle_config_units);
+  s_server.on("/config/timezone",   HTTP_POST, handle_config_timezone);
   s_server.on("/config/alias",      HTTP_POST, handle_config_alias);
+  s_server.on("/logs",              HTTP_GET,  handle_logs_get);
+  s_server.on("/logs/download",     HTTP_GET,  handle_logs_download);
   s_server.on("/wifi/reset", HTTP_POST, []() {
     s_server.send(200, "text/plain",
                   "Resetting WiFi - rebooting into the setup access point.");

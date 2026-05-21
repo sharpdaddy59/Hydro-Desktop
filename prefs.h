@@ -1,8 +1,8 @@
 // prefs.h — NVS-backed user preferences.
 //
 // Stores: brightness mode, screen rotation, auto-cycle dwell time,
-// manually-added hosts (in case mDNS browse is unreliable on the LAN),
-// per-device aliases, touch calibration matrix.
+// temperature unit, SD-log timezone, manually-added hosts (in case mDNS
+// browse is unreliable on the LAN), per-device aliases.
 
 #pragma once
 
@@ -45,6 +45,11 @@ void    prefs_set_cycle_seconds(uint8_t s);
 TempUnitPref prefs_temp_unit();
 void         prefs_set_temp_unit(TempUnitPref u);
 
+// POSIX TZ string for the SD-log CSV timestamp ("" = UTC). The value is
+// a POSIX TZ string (e.g. "EST5EDT,M3.2.0,M11.1.0") so DST is automatic.
+const char* prefs_timezone();
+void        prefs_set_timezone(const char* tz);
+
 // Manual host list — hosts the user added by hand (for LANs where mDNS
 // browse misses devices). Discovery merges these into the device array.
 uint8_t      prefs_manual_host_count();
@@ -55,8 +60,3 @@ bool         prefs_remove_manual_host(const char* hostname);
 // Per-device alias ("Tomatoes" instead of cores3-hydro-a3f2).
 const char* prefs_alias_for(const char* hostname);  // "" if none
 void        prefs_set_alias(const char* hostname, const char* alias);
-
-// Touch calibration matrix (XPT2046 raw -> screen coords).
-struct TouchCal { int16_t x_min, x_max, y_min, y_max; };
-bool prefs_load_touch_cal(TouchCal& out);
-void prefs_save_touch_cal(const TouchCal& cal);

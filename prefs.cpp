@@ -7,7 +7,6 @@
 static Preferences s_ui;       // namespace "dash-ui"
 static Preferences s_hosts;    // namespace "dash-hosts"
 static Preferences s_aliases;  // namespace "dash-alias"
-static Preferences s_touch;    // namespace "dash-touch"
 
 // Bump this whenever the meaning of stored prefs changes in a way that
 // existing values would be invalid (e.g., we change the panel config in
@@ -19,6 +18,7 @@ static BrightnessMode s_mode  = BRIGHTNESS_AUTO;
 static uint8_t        s_rot   = 4;            // CYD landscape (panel swap + offset_y=80 in ui.cpp)
 static uint8_t        s_cycle = CYCLE_SECONDS_DEFAULT;  // auto-cycle dwell, seconds
 static TempUnitPref   s_units = TEMP_UNIT_AUTO;         // temperature display unit
+static String         s_tz;                            // POSIX TZ for SD-log timestamps ("" = UTC)
 static std::vector<std::string> s_manual_hosts;
 
 static void load_manual_hosts() {
@@ -58,11 +58,13 @@ void prefs_load() {
     s_rot   = 4;
     s_cycle = CYCLE_SECONDS_DEFAULT;
     s_units = TEMP_UNIT_AUTO;
+    s_tz    = "";
     s_ui.begin("dash-ui", false);
     s_ui.putUChar("mode",   (uint8_t)s_mode);
     s_ui.putUChar("rot",    s_rot);
     s_ui.putUChar("cycle",  s_cycle);
     s_ui.putUChar("units",  (uint8_t)s_units);
+    s_ui.putString("tz",    s_tz);
     s_ui.putUChar("schema", PREFS_SCHEMA);
     s_ui.end();
   } else {
@@ -74,6 +76,8 @@ void prefs_load() {
     s_cycle = s_ui.getUChar("cycle", CYCLE_SECONDS_DEFAULT);
     // "units" is an additive key (v0.1.13) — same story, default AUTO.
     s_units = (TempUnitPref)s_ui.getUChar("units", TEMP_UNIT_AUTO);
+    // "tz" is an additive key (v0.1.15) — default "" (UTC).
+    s_tz = s_ui.getString("tz", "");
     s_ui.end();
   }
   load_manual_hosts();
@@ -85,6 +89,7 @@ void prefs_save() {
   s_ui.putUChar("rot",   s_rot);
   s_ui.putUChar("cycle", s_cycle);
   s_ui.putUChar("units", (uint8_t)s_units);
+  s_ui.putString("tz",   s_tz);
   s_ui.end();
 }
 
@@ -104,6 +109,12 @@ TempUnitPref prefs_temp_unit() { return s_units; }
 void         prefs_set_temp_unit(TempUnitPref u) {
   if (u > TEMP_UNIT_FAHRENHEIT) u = TEMP_UNIT_AUTO;
   s_units = u;
+  prefs_save();
+}
+
+const char* prefs_timezone() { return s_tz.c_str(); }
+void        prefs_set_timezone(const char* tz) {
+  s_tz = tz ? tz : "";
   prefs_save();
 }
 
@@ -139,23 +150,5 @@ void prefs_set_alias(const char* hostname, const char* alias) {
   s_aliases.end();
 }
 
-bool prefs_load_touch_cal(TouchCal& out) {
-  s_touch.begin("dash-touch", true);
-  bool ok = s_touch.isKey("xmin");
-  if (ok) {
-    out.x_min = s_touch.getShort("xmin", 300);
-    out.x_max = s_touch.getShort("xmax", 3900);
-    out.y_min = s_touch.getShort("ymin", 300);
-    out.y_max = s_touch.getShort("ymax", 3900);
-  }
-  s_touch.end();
-  return ok;
-}
-void prefs_save_touch_cal(const TouchCal& cal) {
-  s_touch.begin("dash-touch", false);
-  s_touch.putShort("xmin", cal.x_min);
-  s_touch.putShort("xmax", cal.x_max);
-  s_touch.putShort("ymin", cal.y_min);
-  s_touch.putShort("ymax", cal.y_max);
-  s_touch.end();
-}
+// (Touch calibration prefs removed in v0.1.14 — the dashboard is
+// display-only; the dash-touch NVS namespace is no longer used.)

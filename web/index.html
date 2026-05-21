@@ -106,8 +106,42 @@
     <select id=cycle onchange=setCycle()></select>
   </div>
   <p class=muted>How long each device is shown before the dashboard
-    advances to the next. &ldquo;Never&rdquo; holds on one device until
-    you tap the screen.</p>
+    advances to the next. &ldquo;Never&rdquo; holds on the first device.</p>
+</div>
+
+<h2>Logging</h2>
+<div class=card>
+  <p class=muted>microSD card: <code id=sdlog>&hellip;</code>. With a card
+    inserted, device readings are appended to a dated CSV file
+    (<code>/hydro-YYYY-MM-DD.csv</code>, one per day).</p>
+  <label class=fld>Log files</label>
+  <div id=logs class=muted>&hellip;</div>
+  <label class=fld>Log timestamp timezone</label>
+  <div class=row>
+    <select id=tz onchange=setTz()>
+      <option value="">UTC</option>
+      <option value="EST5EDT,M3.2.0,M11.1.0">US Eastern</option>
+      <option value="CST6CDT,M3.2.0,M11.1.0">US Central</option>
+      <option value="MST7MDT,M3.2.0,M11.1.0">US Mountain</option>
+      <option value="MST7">US Mountain (Arizona)</option>
+      <option value="PST8PDT,M3.2.0,M11.1.0">US Pacific</option>
+      <option value="AKST9AKDT,M3.2.0,M11.1.0">US Alaska</option>
+      <option value="HST10">US Hawaii</option>
+      <option value="GMT0BST,M3.5.0/1,M10.5.0">UK / Ireland</option>
+      <option value="CET-1CEST,M3.5.0,M10.5.0/3">Central Europe</option>
+      <option value="EET-2EEST,M3.5.0/3,M10.5.0/4">Eastern Europe</option>
+      <option value="IST-5:30">India</option>
+      <option value="CST-8">China</option>
+      <option value="JST-9">Japan</option>
+      <option value="AEST-10AEDT,M10.1.0,M4.1.0/3">Australia (Sydney)</option>
+      <option value="AEST-10">Australia (Brisbane)</option>
+      <option value="NZST-12NZDT,M9.5.0,M4.1.0/3">New Zealand</option>
+    </select>
+  </div>
+  <p class=muted>Timezone for the CSV <code>timestamp</code> column &mdash;
+    daylight saving is handled automatically. &ldquo;UTC&rdquo; logs a
+    trailing <code>Z</code>; other zones log a <code>&plusmn;HH:MM</code>
+    offset.</p>
 </div>
 
 <h2>Actions</h2>
@@ -184,6 +218,27 @@ function fmt(v, suffix) {
   return (v == null) ? '—' : (Math.round(v * 10) / 10) + suffix;
 }
 
+function fmtSize(b) {
+  if (b < 1024) return b + ' B';
+  if (b < 1024 * 1024) return (b / 1024).toFixed(1) + ' KB';
+  return (b / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+async function loadLogs() {
+  let list = [];
+  try { list = await (await fetch('/logs')).json(); } catch (e) {}
+  const box = $('#logs');
+  if (!list.length) {
+    box.textContent = 'No log files (insert a microSD card to start logging).';
+    return;
+  }
+  list.sort((a, b) => a.name < b.name ? 1 : -1);   // newest date first
+  box.innerHTML = list.map(f =>
+    '<div><a href="/logs/download?file=' + encodeURIComponent(f.name) + '">' +
+    esc(f.name) + '</a> <span class=muted>' + fmtSize(f.size) + '</span></div>'
+  ).join('');
+}
+
 async function loadConfig() {
   cfg = await (await fetch('/config')).json();
   $('#host').textContent = cfg.hostname || 'hydro-dash';
@@ -195,6 +250,8 @@ async function loadConfig() {
     b => b.classList.toggle('on', b.dataset.m === cfg.brightness));
   document.querySelectorAll('#tu button').forEach(
     b => b.classList.toggle('on', b.dataset.u === cfg.temp_unit));
+  $('#sdlog').textContent = cfg.sdlog || 'unknown';
+  $('#tz').value = cfg.timezone || '';
 
   const sel = $('#cycle');
   sel.innerHTML = '';
@@ -281,6 +338,13 @@ async function setUnit(u) {
     await post('/config/units', { unit: u });
     await loadConfig();
     toast('Temperature unit: ' + u);
+  } catch (e) { toast('Failed: ' + e.message); }
+}
+
+async function setTz() {
+  try {
+    await post('/config/timezone', { tz: $('#tz').value });
+    toast('Log timezone updated');
   } catch (e) { toast('Failed: ' + e.message); }
 }
 
@@ -381,6 +445,7 @@ function uploadFw() {
 async function refresh() {
   await loadConfig();
   await loadDevices();
+  await loadLogs();
 }
 
 refresh();

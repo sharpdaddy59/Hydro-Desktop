@@ -4,6 +4,8 @@ Desktop dashboard firmware for the Sunton ESP32-2432S028R (CYD). Polls
 multiple [cores3-hydro](https://github.com/sharpdaddy59/cores3-hydro)
 devices on the LAN over their JSON HTTP API and renders a single
 device at a time on a glanceable hero view, auto-cycling through them.
+It is display-only — all configuration is done from a built-in web
+console.
 
 The dashboard is **stateless and never alerts** — same stance as the
 hydro firmware itself. Interpretation is the upstream agent's job; this
@@ -18,12 +20,8 @@ just shows what's true right now.
   3–60 s or disabled entirely from the web settings console).
   Temperatures display in °C, °F, or each device's own unit (Auto).
 - **Status-dot strip** at the top, one colored dot per known device:
-  green = fresh, yellow = sim mode, gray = stale or no data. Tap a dot
-  to focus that device + pause cycling. Tap the hero pane to toggle
-  pause.
-- **Long-press** opens Settings — cycles backlight mode
-  (Auto / Full / Dim) on each tap. Auto follows the on-board LDR;
-  Full and Dim pin the backlight at max or min.
+  green = fresh, yellow = sim mode, gray = stale or no data. The
+  focused device's dot has a white highlight ring.
 - **Per-MAC unique hostname** like `hydro-dash-a3f2.local` — multiple
   CYDs on the same LAN don't collide. The hostname is shown in the
   hero footer so you can identify which physical unit you're looking at.
@@ -119,8 +117,6 @@ hydro-dash/
 ├── backlight.{cpp,h}       LDR-driven PWM auto-dim
 ├── ui.{cpp,h}              LovyanGFX panel config + screen state machine
 ├── ui_hero.{cpp,h}         Hero view + status-dot strip
-├── ui_settings.{cpp,h}     Settings screen (brightness mode cycle)
-├── touch.{cpp,h}           XPT2046 tap/long-press dispatch
 ├── wifi_setup.{cpp,h}      WiFiManager AP-mode onboarding
 ├── discovery.{cpp,h}       mDNS browse + /sensors probe
 ├── poller.{cpp,h}          HTTP polling task

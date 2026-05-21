@@ -15,6 +15,10 @@ Sunton ESP32-2432S028R "Cheap Yellow Display."
   front bezel's bore for the friction fit.
 - **Both USB ports optionally exposed** on one short edge (USB-C and
   Micro-USB), independently toggleable.
+- **Optional microSD card-access slot** on the long edge opposite the
+  USB connectors, so the card can be swapped without opening the case.
+  Includes a finger-relief scoop for gripping a card that seats flush
+  in the socket.
 - **Optional integrated stylus channel** along one long edge with a
   thumb-grip notch at the far end.
 - **Removable kickstand** for desk use, **wall keyhole** on the back
@@ -68,10 +72,15 @@ USE_USB_C      = true;   // USB-C cutout on the short edge
 USE_MICRO_USB  = true;   // Micro-USB cutout on the short edge
 USE_KICKSTAND  = true;   // detachable rear kickstand + matching sockets
 USE_BACK_VENTS = true;   // vents on the back face
+USE_SD_SLOT    = true;   // microSD card-access slot on the -Y long wall
 ```
 
 Set any to `false` and re-render — the geometry disappears with no
 parameter cleanup needed.
+
+**`USE_STYLUS` and `USE_SD_SLOT` share the -Y long wall** — the stylus
+channel runs that wall's full length, so don't enable both. Pick one,
+or relocate SD access by editing `sd_cutout()`.
 
 ## Workflow
 
@@ -93,6 +102,9 @@ update at minimum:
 - `USB_C_Y_CENTER`, `MICRO_USB_Y_CENTER`, `*_Z_OFFSET`,
   `*_WIDTH`, `*_HEIGHT` — where each USB connector sits on the
   PCB +X short edge
+- `SD_SLOT_X_CENTER`, `SD_SLOT_WIDTH`, `SD_SLOT_HEIGHT`,
+  `SD_SLOT_Z_OFFSET` — where the microSD socket mouth sits on the
+  PCB -Y long edge (the socket is on the *back* of the PCB)
 - `LDR_X_FROM_CORNER`, `LDR_Y_FROM_CORNER` — visible LDR component
 
 Every parameter that needs measuring is flagged `MEASURE` in a
@@ -206,6 +218,7 @@ Group highlights:
 | `PCB_*` | Board outline; affects every other piece's size |
 | `LCD_*`, `LCD_BEZEL_*` | LCD module footprint and bezel widths (active-glass cutout is derived) |
 | `USB_C_*`, `MICRO_USB_*` | Back-shell USB cutout positions and sizes |
+| `SD_SLOT_*`, `SD_RELIEF_*` | microSD card-access slot + finger-relief scoop |
 | `LDR_*` | Front-bezel pinhole position |
 | `STYLUS_*` | Side channel diameter, length, retention notch |
 | `PCB_POST_*` | Back-shell shoulder + shaft dimensions |

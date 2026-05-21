@@ -13,11 +13,11 @@
 #include "prefs.h"
 #include "backlight.h"
 #include "ui.h"
-#include "touch.h"
 #include "wifi_setup.h"
 #include "discovery.h"
 #include "poller.h"
 #include "ble_scanner.h"
+#include "sdlog.h"
 #include "http_server.h"
 
 void setup() {
@@ -37,8 +37,6 @@ void setup() {
   ui_begin();
   ui_set_status("Connecting to WiFi...");
 
-  touch_begin();
-
   // Blocks until WiFi up. WiFiManager opens an AP if no creds saved.
   wifi_setup_begin();
 
@@ -50,6 +48,9 @@ void setup() {
   // BLE init doesn't contend with WiFiManager's AP-mode radio use.
   ble_scanner_begin();
 
+  // Append device readings to a CSV on the microSD card, if one is in.
+  sdlog_begin();
+
   // Optional management API — /devices, /wifi/reset, /status.
   http_server_begin();
 
@@ -58,8 +59,8 @@ void setup() {
 
 void loop() {
   ui_loop();
-  touch_loop();
   backlight_loop();
+  sdlog_loop();
   http_server_loop();
   delay(10);
 }

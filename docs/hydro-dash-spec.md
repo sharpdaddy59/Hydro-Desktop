@@ -9,6 +9,54 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.16:** Daily SD-log rotation + browser log download. The CSV log
+  now rotates **per local day** — `sdlog.cpp` writes to
+  `/hydro-YYYY-MM-DD.csv` (the date from the configured timezone), each
+  day's file getting its own header row; `/hydro-log.csv` is kept as the
+  pre-NTP fallback (a no-internet LAN logs there exactly as before). Two
+  new endpoints let the log be pulled without removing the card:
+  `GET /logs` lists the CSV files on the card (name + size) and
+  `GET /logs/download?file=NAME` streams one as a download. The `file`
+  param is untrusted — `sdlog_is_log_filename()` is a strict whitelist
+  (no separators, no `..`, `hydro-` prefix, `.csv` suffix) applied before
+  any `SD.open`. The settings SPA's Logging section lists the files as
+  download links. SD/FS knowledge stays in `sdlog.cpp`
+  (`sdlog_list_files` / `sdlog_open_for_read`); `http_server.cpp` only
+  calls those. The download briefly freezes the dashboard during the
+  transfer (synchronous `WebServer`, same trade-off as the OTA upload).
+- **v0.1.15:** microSD CSV data logging. New module `sdlog.cpp` appends
+  one CSV row per device to `/hydro-log.csv` on the microSD card every
+  `SD_LOG_INTERVAL_MS` (default 60 s) — pull the card to analyze the data
+  in a spreadsheet. The card is optional: with no card (or a failed
+  mount) `sdlog_begin()` disables logging cleanly and the dashboard is
+  unaffected; pulling the card mid-run is detected on the next append and
+  self-disables. Logging is driven from `loop()` (no task, no locking) —
+  the SD card owns the VSPI bus outright now that the touchscreen is
+  gone. The CSV carries `timestamp` (ISO-8601, empty until NTP syncs),
+  `uptime_s`, and each device's readings; a NaN reading is an empty
+  cell. The timestamp's timezone is picked from a dropdown of common
+  zones in the settings SPA (each maps to a POSIX TZ string, so DST is
+  automatic) — default UTC (trailing `Z`), otherwise local time with a
+  `±HH:MM` offset. NTP is started non-blocking — a no-internet LAN keeps
+  the empty-timestamp / uptime-seconds fallback.
+  `GET /config` gains a read-only `sdlog` status; the settings SPA shows
+  it. Logging *records*, it never interprets — no code path reads the
+  CSV back — so it stays consistent with the dashboard's stateless
+  stance. `SD` / `FS` / `SPI` ship with the esp32 core (no library
+  change). Single append-only file for now; daily rotation is open work.
+- **v0.1.14:** Touchscreen removed. The XPT2046 touch panel and the
+  on-device settings screen are deleted — the dashboard is now
+  display-only, configured entirely from the web settings console.
+  Touch on the CYD was the firmware's flakiest subsystem (placeholder
+  calibration, a stub recalibration flow, off-axis on first press), and
+  everything the settings screen offered (brightness mode) is on the web
+  console. `touch.cpp/.h` and `ui_settings.cpp/.h` are gone; the UI
+  screen state machine collapses to the single hero view, which now
+  always auto-cycles (no on-device focus/pause). The `dash-touch` NVS
+  namespace and the touch-calibration prefs are removed — no
+  `PREFS_SCHEMA` bump (separate namespace; orphaned data on existing
+  units is harmless). Removing touch also frees the VSPI SPI controller,
+  which the microSD card needs.
 - **v0.1.13:** Temperature unit preference + tidied Govee tiles.
   A new dashboard-wide temperature display unit — **Auto / °C / °F** —
   is settable from the web settings console (segmented control in the
@@ -219,15 +267,16 @@ from the spec, update the spec.
 
 For the enclosure (3D-printed, parametric OpenSCAD source), see
 [`enclosure/`](../enclosure/). It's a snap-fit two-piece case with
-PCB-retention posts, both USB cutouts, an integrated stylus channel,
-removable kickstand, and a wall-mount keyhole.
+PCB-retention posts, both USB cutouts, an optional microSD
+card-access slot, an integrated stylus channel, removable kickstand,
+and a wall-mount keyhole.
 
 
 
 | Subsystem | Pin / detail |
 |-----------|--------------|
 | ILI9341 TFT (HSPI) | MOSI 13, MISO 12, SCLK 14, CS 15, DC 2, RST -1, BL 21 |
-| XPT2046 touch (VSPI) | MOSI 32, MISO 39, SCLK 25, CS 33, IRQ 36 |
+| microSD (VSPI) | MOSI 23, MISO 19, SCLK 18, CS 5 |
 | LDR (auto-dim) | GPIO 34 (ADC1, input-only) |
 | Speaker | GPIO 26 (reserved, unused) |
 | RGB LED (active LOW) | R 4, G 16, B 17 |
@@ -239,8 +288,8 @@ removable kickstand, and a wall-mount keyhole.
 - GPIO 21 is shared between backlight and the P3 expansion header. Don't
   use P3-21 if you need the panel lit.
 - GPIO 35 is input-only — fine for sensors, never an output.
-- VSPI is shared between the touch controller and (if ever wired) the
-  microSD slot. The current scaffold doesn't use SD, so no contention.
+- VSPI carries the microSD card (CSV logging, added v0.1.15); it has the
+  bus to itself since the touchscreen was removed in v0.1.14.
 
 ## Boot order (`hydro-dash.ino`)
 
@@ -249,16 +298,16 @@ removable kickstand, and a wall-mount keyhole.
 3. `prefs_load()` — pull NVS prefs (brightness, rotation, manual hosts).
 4. `backlight_begin()` — PWM on TFT_BL, LDR pin mode.
 5. `ui_begin()` — LovyanGFX init, fill black, set rotation from prefs.
-6. `touch_begin()` — passes through to LovyanGFX's XPT2046 driver.
-7. `wifi_setup_begin()` — `WiFiManager.autoConnect`; opens `hydro-dash-setup`
+6. `wifi_setup_begin()` — `WiFiManager.autoConnect`; opens `hydro-dash-setup`
    AP if no creds; reboots after `AP_TIMEOUT_S` failure.
-8. `discovery_begin()` — `MDNS.begin`, seed manual hosts from prefs,
+7. `discovery_begin()` — `MDNS.begin`, seed manual hosts from prefs,
    spawn the browse task.
-9. `poller_begin()` — spawn the per-device polling task on core 1.
+8. `poller_begin()` — spawn the per-device polling task on core 1.
+9. `ble_scanner_begin()` — spawn the passive BLE scan task (Govee H5075).
 10. `http_server_begin()` — bind `/`, `/devices`, `/status`, etc.
 
-`loop()` pumps `ui_loop`, `touch_loop`, `backlight_loop`, and
-`http_server_loop` at ~10 ms cadence.
+`loop()` pumps `ui_loop`, `backlight_loop`, and `http_server_loop` at
+~10 ms cadence.
 
 ## Concurrency model
 
@@ -272,9 +321,10 @@ Tasks:
 
 | Task | Core | Stack | Purpose |
 |------|------|-------|---------|
-| loop (Arduino) | 1 | default | UI render, touch dispatch, backlight, HTTP server |
+| loop (Arduino) | 1 | default | UI render, backlight, HTTP server |
 | `discovery` | 0 | 4 KB | mDNS browse every `DISCOVERY_INTERVAL_MS` |
 | `poller` | 1 | 8 KB | round-robin per-device polling |
+| `ble_scan` | 0 | 4 KB | passive BLE advertisement scan (Govee H5075) |
 
 ## Discovery
 
@@ -284,7 +334,7 @@ hostnames are inserted into `g_devices[]` via `state_insert()`. Resolved
 IPs are cached on the `DeviceRecord` so the poller can fall back to IP
 when mDNS resolution fails on a specific request.
 
-Manual hosts (added via `POST /devices` or the settings screen) are
+Manual hosts (added via `POST /devices`) are
 seeded from NVS at boot, so they survive reboots and are tried even when
 mDNS is unhappy.
 
@@ -310,22 +360,19 @@ true right now.
 
 ## Screen flow
 
-```
-GRID --tap tile-->     DETAIL  --tap-->  GRID
-GRID --long press-->   SETTINGS --tap--> GRID
-```
+The dashboard is display-only — there is no on-device input. It shows a
+single screen, the hero view: one device at a time, auto-cycling through
+`g_devices[]` on the `prefs_cycle_seconds` timer (`0` holds on the first
+device). All configuration is done from the web console (see HTTP API).
 
-- **GRID:** 2×2 tiles. Each: alias-or-hostname, water/air/humidity/light,
-  status dot (green = fresh + all sensors REAL, gray = stale, yellow =
-  any sensor in SIMULATED mode upstream). A sensor in the OFF/disabled
-  mode is treated as a healthy state for the dot — the user explicitly
-  turned it off — and the per-row reading renders `OFF` in dim grey.
-- **DETAIL:** all readings + uptime, RSSI, battery, FW version, IP,
-  failure count.
-- **SETTINGS** (stub): brightness mode toggle, screen rotation, re-scan
-  mDNS button, reset WiFi, recalibrate touch.
-
-Tile geometry: 320×240 / 2 = 160×120 per tile in landscape rotation.
+- **Status strip** (top 30 px): one colored dot per known device — green
+  (fresh, all sensors REAL), yellow (any sensor SIMULATED upstream), gray
+  (stale / no data). The focused device's dot has a white ring.
+- **Hero readings:** the focused device's name and large readings —
+  Water / Air / Humidity / Light for cores3-hydro units, Air / Humidity /
+  Battery for Govee BLE sensors. A disabled (OFF) sensor renders `OFF` in
+  dim grey.
+- **Footer:** device index, RSSI, and this dashboard's own hostname.
 
 ## HTTP API
 
@@ -339,14 +386,17 @@ no auth.
 | `/devices` | POST | Add a manual host (form: `hostname=...`) |
 | `/devices/remove` | POST | Drop a manual host from the persisted list (form: `hostname=...`) |
 | `/status` | GET | FW version, uptime, heap, device count |
-| `/config` | GET | Brightness mode, auto-cycle dwell, manual-host list |
+| `/config` | GET | Brightness, auto-cycle dwell, temperature unit, SD-logging status, log timezone, manual hosts |
 | `/config/brightness` | POST | Set backlight mode (form: `mode=auto\|full\|dim`) |
 | `/config/cycle` | POST | Set auto-cycle dwell seconds (form: `seconds=N`, 0–60) |
 | `/config/units` | POST | Set temperature display unit (form: `unit=auto\|celsius\|fahrenheit`) |
+| `/config/timezone` | POST | Set the SD-log timestamp timezone (form: `tz=<POSIX TZ string>`) |
 | `/config/alias` | POST | Set/clear a device display name (form: `hostname=...&alias=...`) |
 | `/wifi/reset` | POST | Wipe creds and reboot to AP mode |
 | `/rebrowse` | POST | Force an mDNS rebrowse |
 | `/ota/upload` | POST | Multipart firmware-image upload; verifies, then reboots |
+| `/logs` | GET | JSON list of SD log files (name + size) |
+| `/logs/download` | GET | Download one log file as CSV (query: `file=NAME`, traversal-validated) |
 
 ## NVS namespaces
 
@@ -357,21 +407,19 @@ Each is single-purpose so a wipe-one-thing user action doesn't hit unrelated sta
 | `dash-ui` | brightness mode, rotation, auto-cycle dwell seconds, temperature unit |
 | `dash-hosts` | manually-added cores3-hydro hostnames |
 | `dash-alias` | per-hostname display alias |
-| `dash-touch` | XPT2046 calibration matrix |
 
 WiFiManager owns its own NVS keys and is intentionally not surfaced here.
 
 ## Open work (post-scaffold)
 
-- **First-boot touch calibration screen.** Right now `ui.cpp` ships with
-  placeholder XPT2046 calibration; first-press behavior on a fresh unit
-  will be visibly off-axis. Add a 4-corner press flow that writes via
-  `prefs_save_touch_cal`.
-- **Flesh out settings screen.** Currently stub rows.
 - **Stale-but-visible rendering** — keep last-known readings on screen
   in dimmed text rather than blanking the tile.
 - **Sparklines** — small history graphs in detail view (optional;
-  needs a server-side aggregator if we want anything > a few minutes).
+  needs a server-side aggregator if we want anything > a few minutes,
+  or could read back the SD CSV log).
+- **SD log: optional on/off toggle** — logging is on whenever a card is
+  present. A `dash-ui` NVS toggle + a web control could disable it with
+  a card inserted (additive key — no `PREFS_SCHEMA` bump).
 - **Screen rotation auto-detect** via the accelerometer? CYD doesn't
   have one — skip.
 - **Remove a dead BLE sensor without a reboot.** `g_devices` is

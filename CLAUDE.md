@@ -37,7 +37,6 @@ duplicated here for fast lookup:
 | Subsystem | Pin / detail |
 |-----------|--------------|
 | ILI9341 TFT (HSPI) | MOSI 13, MISO 12, SCLK 14, CS 15, DC 2, BL 21 |
-| XPT2046 touch (VSPI) | MOSI 32, MISO 39, SCLK 25, CS 33, IRQ 36 |
 | LDR (auto-dim) | GPIO 34 |
 | RGB LED (active LOW) | R 4, G 16, B 17 |
 
@@ -46,8 +45,8 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 ## Architecture pointers
 
 - **Boot order** (`hydro-dash.ino`): `state_init` → `prefs_load` →
-  `backlight_begin` → `ui_begin` → `touch_begin` → `wifi_setup_begin`
-  (WiFiManager) → `discovery_begin` → `poller_begin` →
+  `backlight_begin` → `ui_begin` → `wifi_setup_begin` (WiFiManager) →
+  `discovery_begin` → `poller_begin` → `ble_scanner_begin` →
   `http_server_begin`.
 - **Concurrency:** producers (`poller`, `discovery`) write atomics;
   consumer (`ui`) reads without locking. `g_devices_mutex` only guards
@@ -55,9 +54,9 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 - **HTTP server:** synchronous `WebServer` polled from `loop()` via
   `http_server_loop()`. Same convention as cores3-hydro.
 - **NVS** is split into per-feature namespaces: `dash-ui` (brightness,
-  rotation), `dash-hosts` (manual host list), `dash-alias` (per-device
-  display names), `dash-touch` (XPT2046 calibration). WiFiManager owns
-  its own keys separately.
+  rotation, cycle dwell, temperature unit), `dash-hosts` (manual host
+  list), `dash-alias` (per-device display names). WiFiManager owns its
+  own keys separately.
 - **mDNS:** `MDNS.queryService("http", "tcp")` periodically; results
   filtered by hostname prefix `cores3-hydro-`. Resolved IPs are cached
   on the DeviceRecord so the poller can skip mDNS resolution per
@@ -76,31 +75,25 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
    on existing units after a config change.
 2. **GPIO 21 is shared.** Backlight and the P3 expansion header both
    use it. If you ever wire something to P3 pin 4, the panel goes dark.
-3. **VSPI is shared with the SD slot.** The current scaffold doesn't use
-   SD, so no contention. If SD is ever added, the LovyanGFX touch driver
-   needs `bus_shared = true` and explicit lock management.
+3. **VSPI belongs to the microSD card.** `sdlog.cpp` mounts the SD card
+   on VSPI (its own GPIOs); the bus is uncontended since the touchscreen
+   was removed in v0.1.14. SD access runs from `loop()` (`sdlog_loop`) —
+   no task, no locking.
 4. **GPIO 35 is input-only.** Don't try to drive it as an output.
-5. **Touch calibration ships with placeholder values** in `ui.cpp`. A
-   fresh unit will be visibly off-axis on first press until the
-   recalibration flow lands. Numbers stored via
-   `prefs_save_touch_cal`; settings-screen handler is a stub.
-6. **WiFiManager blocks** in `wifi_setup_begin()` until creds are
+5. **WiFiManager blocks** in `wifi_setup_begin()` until creds are
    submitted or `AP_TIMEOUT_S` expires (default 180 s). On timeout we
    reboot — there's nothing useful for an offline dashboard to do.
-7. **`FY()` in `ui.h` is currently an identity passthrough** — it was
+6. **`FY()` in `ui.h` is currently an identity passthrough** — it was
    added to flip Y when an earlier panel config inverted the canvas Y
    axis. The locked-in config doesn't need flipping, but the hook is
    left in place so a future panel-config change can reinstate the
    flip without touching every draw call.
-8. **GitHub Actions Node 20 deprecation warning** is the same as in
+7. **GitHub Actions Node 20 deprecation warning** is the same as in
    cores3-hydro — non-blocking, will resolve when the action authors
    ship Node 24 majors.
 
 ## Conventions for new work
 
-- **New screen:** add `ui_<name>.{cpp,h}` mirroring `ui_hero` /
-  `ui_settings`. Wire in via `ui.cpp`'s `ui_loop` switch and
-  `ui_set_screen`.
 - **New polled field from cores3-hydro:** add an atomic to
   `DeviceRecord` in `state.h`, parse it in `poller.cpp::poll_sensors`
   or `poll_status`, render it where appropriate. **Don't break the
@@ -140,7 +133,49 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Recent state
 
-- **v0.1.13 (current):** Temperature unit preference + trimmed Govee
+- **v0.1.16 (current):** Daily SD-log rotation + browser log download.
+  `sdlog.cpp` now writes one file per local day — `/hydro-YYYY-MM-DD.csv`
+  (`current_log_path` computes it from the configured-timezone local
+  date, so a file's day boundary matches its rows' timestamps).
+  `/hydro-log.csv` remains the pre-NTP fallback. The boot-time file open
+  moved into `sdlog_loop()` (the header is written per new day's file).
+  New `GET /logs` (JSON file list) and `GET /logs/download?file=`
+  (streams a CSV as a download) — the `file` param is gated by
+  `sdlog_is_log_filename()`, a strict path-traversal whitelist applied
+  before any `SD.open`. SD/FS access stays behind `sdlog.cpp`
+  (`sdlog_list_files`, `sdlog_open_for_read`); `http_server.cpp` calls
+  those, no `<SD.h>`. The settings SPA lists the files as download
+  links. The download blocks the loop for the transfer (like OTA).
+- **v0.1.15:** microSD CSV data logging. New module
+  `sdlog.cpp` / `.h` appends one CSV row per device to `/hydro-log.csv`
+  every `SD_LOG_INTERVAL_MS` (default 60 s). Optional — `sdlog_begin()`
+  disables cleanly when no card is present, and `sdlog_loop()`
+  self-disables if the card is pulled (the next append open fails).
+  Driven from `loop()` — no task, no locking; `g_devices` atomics are
+  read lock-free as the UI does. The SD card owns the VSPI bus outright
+  (touch is gone). CSV columns: ISO-8601 `timestamp` (empty until NTP
+  syncs), `uptime_s`, plus each device's readings (NaN → empty cell).
+  The timestamp timezone is a `dash-ui` pref `tz` (additive POSIX TZ
+  string — no schema bump) set from a zone dropdown in the SPA via
+  `POST /config/timezone`; `sdlog` applies it with `configTzTime` /
+  `setenv`, default UTC. `GET /config` gains read-only `sdlog` status +
+  `timezone`, shown in the settings SPA. `SD` / `FS` / `SPI` ship with the esp32 core — no
+  library change. Logging records, never interprets — consistent with
+  the stateless stance.
+- **v0.1.14:** Touchscreen removed. The XPT2046 touch panel
+  and the on-device settings screen are gone — the dashboard is
+  display-only, configured entirely from the web console. Touch was the
+  flakiest subsystem (placeholder calibration, stub recalibration,
+  off-axis on first press); the settings screen only cycled brightness,
+  which the web console already does. Deleted `touch.cpp/.h` and
+  `ui_settings.cpp/.h`; `ui.cpp`'s screen state machine collapsed to the
+  single hero view (`UiScreen` enum, `ui_set_screen`, `ui_handle_touch`,
+  `ui_handle_long_press` all gone); `ui_hero` lost its pause /
+  focus-by-touch state and now always auto-cycles. Removed the
+  `dash-touch` NVS namespace and `prefs_load/save_touch_cal` (no
+  `PREFS_SCHEMA` bump — separate namespace; orphaned data is harmless).
+  This frees the VSPI controller, which the microSD card needs.
+- **v0.1.13:** Temperature unit preference + trimmed Govee
   tiles. New dashboard-wide temp display unit (Auto / °C / °F) — NVS
   pref `units` in `dash-ui` (additive key, no `PREFS_SCHEMA` bump),
   `prefs_temp_unit()`, set via `POST /config/units` and the settings
@@ -336,3 +371,4 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
   wire format documented in `docs/govee-ble.md`
 - `http_server.cpp` / `web/index.html` — management HTTP API + settings SPA
 - `ota.cpp` — browser-driven firmware update (`POST /ota/upload`)
+- `sdlog.cpp` — microSD CSV data logging (daily `/hydro-YYYY-MM-DD.csv`)
