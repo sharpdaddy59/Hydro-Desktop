@@ -9,6 +9,16 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.18:** Web-configurable SD-log interval. The append cadence is
+  now a runtime preference instead of the compile-time
+  `SD_LOG_INTERVAL_MS`: a "Log interval" dropdown in the settings SPA's
+  Logging card (1 min – 1 hour presets), stored in minutes as the
+  additive `dash-ui` key `logmin` (default 5 — no schema bump, existing
+  units keep behavior). `sdlog_loop()` re-reads the pref each pass, so
+  a change takes effect immediately, no reboot. New
+  `POST /config/loginterval` (`minutes=N`, clamped to [1, 1440]);
+  `GET /config` reports `log_interval_min`. Backported from
+  govee-dash v0.2.0.
 - **v0.1.17:** SD-log tuning — monthly files, 5-minute interval, faster
   SD clock. The CSV log now rotates **monthly** (`/hydro-YYYY-MM.csv`)
   rather than daily: for the insert-and-forget archival use, 12 files a

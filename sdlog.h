@@ -13,7 +13,8 @@
 // disabled. Also starts NTP for wall-clock timestamps.
 void sdlog_begin();
 
-// Append one CSV row per device every SD_LOG_INTERVAL_MS. Call from loop().
+// Append one CSV row per device every prefs_log_interval_min() minutes.
+// Call from loop().
 void sdlog_loop();
 
 // True once a card is mounted and logging is active.

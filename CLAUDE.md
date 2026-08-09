@@ -136,7 +136,15 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Recent state
 
-- **v0.1.17 (current):** SD-log tuning. Rotation switched from daily to
+- **v0.1.18 (current):** Web-configurable SD-log interval. The
+  compile-time `SD_LOG_INTERVAL_MS` became a `dash-ui` pref `logmin`
+  (minutes, default `SD_LOG_INTERVAL_DEFAULT_MIN` = 5, additive key —
+  no schema bump). `sdlog_loop()` re-reads the pref every pass so a
+  change applies without a reboot. Set via `POST /config/loginterval`
+  (form arg `minutes=N`, clamped [1, 1440]); `GET /config` reports
+  `log_interval_min`; the SPA's Logging card gains a "Log interval"
+  dropdown. Backported from govee-dash's v0.2.0 implementation.
+- **v0.1.17:** SD-log tuning. Rotation switched from daily to
   **monthly** files (`/hydro-YYYY-MM.csv` — `current_log_path` formats
   `%Y-%m`); the log interval went 1 min → 5 min (`SD_LOG_INTERVAL_MS`);
   and `SD_SPI_FREQ_HZ` rose 4 → 20 MHz (the SD card has VSPI to itself

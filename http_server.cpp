@@ -145,9 +145,10 @@ static void handle_config_get() {
     case TEMP_UNIT_FAHRENHEIT: tu = "fahrenheit"; break;
     case TEMP_UNIT_AUTO: break;
   }
-  doc["temp_unit"] = tu;
-  doc["sdlog"]     = sdlog_active() ? "logging" : "no card";
-  doc["timezone"]  = prefs_timezone();
+  doc["temp_unit"]        = tu;
+  doc["sdlog"]            = sdlog_active() ? "logging" : "no card";
+  doc["timezone"]         = prefs_timezone();
+  doc["log_interval_min"] = prefs_log_interval_min();
 
   JsonArray mh = doc.createNestedArray("manual_hosts");
   uint8_t n = prefs_manual_host_count();
@@ -210,6 +211,20 @@ static void handle_config_timezone() {
   String tz = s_server.hasArg("tz") ? s_server.arg("tz") : String();
   prefs_set_timezone(tz.c_str());
   sdlog_apply_timezone();
+  send_ok();
+}
+
+// POST /config/loginterval — form arg minutes=N. sdlog_loop re-reads the
+// pref every pass, so the new cadence applies without a reboot.
+static void handle_config_loginterval() {
+  if (!s_server.hasArg("minutes")) {
+    s_server.send(400, "text/plain", "need minutes");
+    return;
+  }
+  long v = s_server.arg("minutes").toInt();
+  if (v < 1) v = 1;
+  if (v > LOG_INTERVAL_MAX_MIN) v = LOG_INTERVAL_MAX_MIN;
+  prefs_set_log_interval_min((uint16_t)v);
   send_ok();
 }
 
@@ -282,6 +297,7 @@ void http_server_begin() {
   s_server.on("/config/cycle",      HTTP_POST, handle_config_cycle);
   s_server.on("/config/units",      HTTP_POST, handle_config_units);
   s_server.on("/config/timezone",   HTTP_POST, handle_config_timezone);
+  s_server.on("/config/loginterval", HTTP_POST, handle_config_loginterval);
   s_server.on("/config/alias",      HTTP_POST, handle_config_alias);
   s_server.on("/logs",              HTTP_GET,  handle_logs_get);
   s_server.on("/logs/download",     HTTP_GET,  handle_logs_download);

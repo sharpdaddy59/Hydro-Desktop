@@ -1,4 +1,5 @@
 #include "prefs.h"
+#include "config.h"
 #include <Preferences.h>
 #include <vector>
 #include <string>
@@ -19,6 +20,7 @@ static uint8_t        s_rot   = 4;            // CYD landscape (panel swap + off
 static uint8_t        s_cycle = CYCLE_SECONDS_DEFAULT;  // auto-cycle dwell, seconds
 static TempUnitPref   s_units = TEMP_UNIT_AUTO;         // temperature display unit
 static String         s_tz;                            // POSIX TZ for SD-log timestamps ("" = UTC)
+static uint16_t       s_logmin = SD_LOG_INTERVAL_DEFAULT_MIN;  // SD-log cadence, minutes
 static std::vector<std::string> s_manual_hosts;
 
 static void load_manual_hosts() {
@@ -59,12 +61,14 @@ void prefs_load() {
     s_cycle = CYCLE_SECONDS_DEFAULT;
     s_units = TEMP_UNIT_AUTO;
     s_tz    = "";
+    s_logmin = SD_LOG_INTERVAL_DEFAULT_MIN;
     s_ui.begin("dash-ui", false);
     s_ui.putUChar("mode",   (uint8_t)s_mode);
     s_ui.putUChar("rot",    s_rot);
     s_ui.putUChar("cycle",  s_cycle);
     s_ui.putUChar("units",  (uint8_t)s_units);
     s_ui.putString("tz",    s_tz);
+    s_ui.putUShort("logmin", s_logmin);
     s_ui.putUChar("schema", PREFS_SCHEMA);
     s_ui.end();
   } else {
@@ -78,6 +82,8 @@ void prefs_load() {
     s_units = (TempUnitPref)s_ui.getUChar("units", TEMP_UNIT_AUTO);
     // "tz" is an additive key (v0.1.15) — default "" (UTC).
     s_tz = s_ui.getString("tz", "");
+    // "logmin" is an additive key (v0.1.18) — default 5 minutes.
+    s_logmin = s_ui.getUShort("logmin", SD_LOG_INTERVAL_DEFAULT_MIN);
     s_ui.end();
   }
   load_manual_hosts();
@@ -90,6 +96,7 @@ void prefs_save() {
   s_ui.putUChar("cycle", s_cycle);
   s_ui.putUChar("units", (uint8_t)s_units);
   s_ui.putString("tz",   s_tz);
+  s_ui.putUShort("logmin", s_logmin);
   s_ui.end();
 }
 
@@ -115,6 +122,14 @@ void         prefs_set_temp_unit(TempUnitPref u) {
 const char* prefs_timezone() { return s_tz.c_str(); }
 void        prefs_set_timezone(const char* tz) {
   s_tz = tz ? tz : "";
+  prefs_save();
+}
+
+uint16_t prefs_log_interval_min() { return s_logmin; }
+void     prefs_set_log_interval_min(uint16_t m) {
+  if (m < 1) m = 1;
+  if (m > LOG_INTERVAL_MAX_MIN) m = LOG_INTERVAL_MAX_MIN;
+  s_logmin = m;
   prefs_save();
 }
 

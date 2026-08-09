@@ -50,6 +50,13 @@ void         prefs_set_temp_unit(TempUnitPref u);
 const char* prefs_timezone();
 void        prefs_set_timezone(const char* tz);
 
+// SD-log append cadence in minutes. sdlog_loop() re-reads this every
+// pass, so a change takes effect without a reboot. Clamped to
+// [1, LOG_INTERVAL_MAX_MIN]; default SD_LOG_INTERVAL_DEFAULT_MIN.
+static constexpr uint16_t LOG_INTERVAL_MAX_MIN = 1440;   // one day
+uint16_t prefs_log_interval_min();
+void     prefs_set_log_interval_min(uint16_t m);
+
 // Manual host list — hosts the user added by hand (for LANs where mDNS
 // browse misses devices). Discovery merges these into the device array.
 uint8_t      prefs_manual_host_count();
