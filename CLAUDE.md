@@ -136,7 +136,16 @@ Reference: https://randomnerdtutorials.com/esp32-cheap-yellow-display-cyd-pinout
 
 ## Recent state
 
-- **v0.1.18 (current):** Web-configurable SD-log interval. The
+- **v0.1.19 (current):** OTA firmware-identity check. The uploaded
+  image must contain `FW_ID_MARKER` (config.h, `#FWID#hydro-dash#`) or
+  the OTA handler aborts before activation — a wrong-project `.bin`
+  (e.g. govee-dash, also plain ESP32) is rejected instead of booted.
+  The marker is a rodata constant in `ota.cpp` so every hydro-dash
+  image carries it; the incoming stream is scanned chunk-by-chunk with
+  a boundary-spanning tail buffer. Images older than 0.1.19 lack the
+  marker — OTA downgrades below that need USB. Same check shipped in
+  govee-dash 0.2.1 and cores3-hydro 0.7.2.
+- **v0.1.18:** Web-configurable SD-log interval. The
   compile-time `SD_LOG_INTERVAL_MS` became a `dash-ui` pref `logmin`
   (minutes, default `SD_LOG_INTERVAL_DEFAULT_MIN` = 5, additive key —
   no schema bump). `sdlog_loop()` re-reads the pref every pass so a

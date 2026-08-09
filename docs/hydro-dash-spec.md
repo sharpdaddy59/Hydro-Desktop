@@ -9,6 +9,22 @@ from the spec, update the spec.
 
 ## Changelog
 
+- **v0.1.19:** OTA firmware-identity check. `POST /ota/upload` now
+  requires the uploaded image to contain the hydro-dash identity marker
+  (`FW_ID_MARKER` in `config.h`) and rejects it before activation
+  otherwise, with a clear "not a hydro-dash image" error. Rationale:
+  the ESP32 bootloader's own validation only checks the *chip* target,
+  so it catches a CoreS3-vs-CYD mixup but would happily boot another
+  plain-ESP32 project's image (govee-dash) — and the ESP-IDF app
+  descriptor can't distinguish projects because every Arduino build
+  stamps the generic `arduino-lib-builder` name. The marker is a rodata
+  string in `ota.cpp`, embedded in every hydro-dash image by
+  construction; the OTA chunk handler scans the stream as it arrives
+  (with a small tail buffer so a marker split across chunk boundaries
+  is still found) and `UPLOAD_FILE_END` aborts if it never appeared.
+  Trade-off: pre-0.1.19 images lack the marker, so OTA downgrades below
+  this version are refused — use USB for those. The same check ships in
+  govee-dash 0.2.1 and cores3-hydro 0.7.2.
 - **v0.1.18:** Web-configurable SD-log interval. The append cadence is
   now a runtime preference instead of the compile-time
   `SD_LOG_INTERVAL_MS`: a "Log interval" dropdown in the settings SPA's
